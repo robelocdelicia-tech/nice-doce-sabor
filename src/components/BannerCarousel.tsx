@@ -15,6 +15,7 @@ export function BannerCarousel({ banners, onSelectSection }: BannerCarouselProps
   const activeBanners = banners.filter((b) => b.is_active);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  const [failedBanners, setFailedBanners] = useState<Record<string, boolean>>({});
   const touchStartX = useRef<number | null>(null);
 
   useEffect(() => {
@@ -85,14 +86,15 @@ export function BannerCarousel({ banners, onSelectSection }: BannerCarouselProps
             transition={{ duration: 0.5, ease: "easeOut" }}
             className="absolute inset-0 w-full h-full"
           >
-            {/* Foto de Fundo */}
+            {/* Foto de Fundo com Fallback Seguro */}
             <Image
-              src={current.image_url}
+              src={failedBanners[current.id] ? "/products/vulcao_ai.jpg" : current.image_url}
               alt={current.title}
               fill
               priority
               sizes="(max-width: 768px) 100vw, 896px"
               className="object-cover object-center group-hover:scale-105 transition-transform duration-700"
+              onError={() => setFailedBanners((prev) => ({ ...prev, [current.id]: true }))}
             />
 
             {/* Gradientes de Luxo para Legibilidade dos Anúncios */}

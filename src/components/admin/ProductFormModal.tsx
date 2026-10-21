@@ -260,6 +260,9 @@ export function ProductFormModal({
                   fill
                   sizes="120px"
                   className="object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "/logo.jpg";
+                  }}
                 />
                 {isCompressing && (
                   <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white text-[10px] font-bold">

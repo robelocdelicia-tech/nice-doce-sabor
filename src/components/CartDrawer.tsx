@@ -10,6 +10,25 @@ interface CartDrawerProps {
   onProceedToCheckout: () => void;
 }
 
+function CartItemThumb({ src, alt }: { src: string; alt: string }) {
+  const [error, setError] = useState(false);
+  return (
+    <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-pink-50 flex-shrink-0 flex items-center justify-center border border-pink-100">
+      {error || !src ? (
+        <span className="text-xs font-bold text-nice-pink font-script">NDS</span>
+      ) : (
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          className="object-cover"
+          onError={() => setError(true)}
+        />
+      )}
+    </div>
+  );
+}
+
 export function CartDrawer({ onProceedToCheckout }: CartDrawerProps) {
   const { items, isCartOpen, setIsCartOpen, updateQuantity, removeItem, updateNotes, subtotal, clearCart } = useCart();
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -83,15 +102,11 @@ export function CartDrawer({ onProceedToCheckout }: CartDrawerProps) {
                 className="p-3.5 rounded-2xl border border-pink-100 bg-[#FFFDFE] shadow-sm space-y-2 hover:border-pink-200 transition"
               >
                 <div className="flex gap-3">
-                  {/* Foto Miniatura */}
-                  <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-pink-50 flex-shrink-0">
-                    <Image
-                      src={item.product.images[0] || "/logo.jpg"}
-                      alt={item.product.name}
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
+                  {/* Foto Miniatura com Tratamento de Erro */}
+                  <CartItemThumb
+                    src={item.product.images[0] || "/logo.jpg"}
+                    alt={item.product.name}
+                  />
 
                   {/* Detalhes do Item */}
                   <div className="flex-1 min-w-0">

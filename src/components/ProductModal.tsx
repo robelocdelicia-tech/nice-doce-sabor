@@ -40,7 +40,15 @@ export function ProductModal({ product, onClose }: ProductModalProps) {
   if (!product) return null;
 
   const images = product.images && product.images.length > 0 ? product.images : ["/logo.jpg"];
-  const currentImage = imageError ? "/logo.jpg" : images[selectedImageIndex] || images[0];
+  const currentImage = images[selectedImageIndex] || images[0] || "/logo.jpg";
+
+  const handleMainImageError = () => {
+    if (selectedImageIndex < images.length - 1) {
+      setSelectedImageIndex((prev) => prev + 1);
+    } else {
+      setImageError(true);
+    }
+  };
 
   const basePrice = selectedVariation ? selectedVariation.price : product.base_price;
   const addonsTotal = selectedAddons.reduce((acc, a) => acc + a.price, 0);
@@ -77,15 +85,25 @@ export function ProductModal({ product, onClose }: ProductModalProps) {
         </button>
 
         {/* Galeria de Fotos */}
-        <div className="relative w-full aspect-[4/3] bg-pink-50 flex-shrink-0">
-          <Image
-            src={currentImage}
-            alt={product.name}
-            fill
-            className="object-cover"
-            onError={() => setImageError(true)}
-            priority
-          />
+        <div className="relative w-full aspect-[4/3] bg-pink-50 flex-shrink-0 flex items-center justify-center">
+          {imageError ? (
+            <div className="w-full h-full bg-gradient-to-tr from-[#FFF0F7] via-[#FFF8FC] to-[#FFE8F3] flex flex-col items-center justify-center p-6 text-center select-none">
+              <div className="w-16 h-16 rounded-full bg-nice-pink/10 text-nice-pink flex items-center justify-center mb-2 shadow-sm">
+                <Sparkles className="w-8 h-8 text-nice-pink" />
+              </div>
+              <span className="font-bold text-nice-wine text-base uppercase tracking-wider">{product.name}</span>
+              <span className="text-xs text-nice-pink font-semibold mt-1">Nice Doce Sabor</span>
+            </div>
+          ) : (
+            <Image
+              src={currentImage}
+              alt={product.name}
+              fill
+              className="object-cover"
+              onError={handleMainImageError}
+              priority
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
 
           {/* Badges na Foto */}

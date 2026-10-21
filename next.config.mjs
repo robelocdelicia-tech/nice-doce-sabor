@@ -13,8 +13,8 @@ const nextConfig = {
         hostname: '**',
       }
     ],
-    // Garante que mesmo que o host não tenha otimizador de imagem nativo ativado, a imagem carrega perfeitamente
-    unoptimized: process.env.NEXT_PUBLIC_UNOPTIMIZED_IMAGES === 'true',
+    // Garante que no Netlify, Vercel e no celular todas as fotos carreguem direto sem falha ou delay de proxy
+    unoptimized: true,
   },
 };
 

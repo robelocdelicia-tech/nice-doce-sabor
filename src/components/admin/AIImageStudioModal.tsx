@@ -174,6 +174,9 @@ export function AIImageStudioModal({
                       alt={item.title}
                       fill
                       className="object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "/logo.jpg";
+                      }}
                     />
                     <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
                       ✨ IA Studio

@@ -21,14 +21,36 @@ export default function HomePage() {
   const [products, setProducts] = useState<Product[]>(DEFAULT_PRODUCTS);
   const [banners, setBanners] = useState<PromoBanner[]>(DEFAULT_PROMO_BANNERS);
 
-  // Carregar produtos, banners e configurações salvas da confeitaria
+  // Carregar produtos, banners e configurações salvas da confeitaria com migração de cache
   useEffect(() => {
     const loadCustomData = () => {
       try {
+        const CACHE_VERSION_KEY = "nice_products_v3_real";
+        const hasV3 = localStorage.getItem(CACHE_VERSION_KEY);
         const savedProds = localStorage.getItem("nice_custom_products");
-        if (savedProds) {
-          setProducts(JSON.parse(savedProds));
+
+        if (!hasV3) {
+          // Migra o cache antigo para carregar as fotos reais e exclusivas de cada produto
+          localStorage.removeItem("nice_custom_products");
+          localStorage.setItem(CACHE_VERSION_KEY, "true");
+          setProducts(DEFAULT_PRODUCTS);
+        } else if (savedProds) {
+          const parsed = JSON.parse(savedProds);
+          // Garante que não haja cache antigo com foto duplicada de bolo de chocolate
+          const hasOldRepeatedCake = parsed.filter((p: Product) =>
+            p.images?.[0]?.includes("photo-1578985545062-69928b1d9587")
+          ).length > 1;
+
+          if (hasOldRepeatedCake) {
+            localStorage.removeItem("nice_custom_products");
+            setProducts(DEFAULT_PRODUCTS);
+          } else {
+            setProducts(parsed);
+          }
+        } else {
+          setProducts(DEFAULT_PRODUCTS);
         }
+
         const savedBanners = localStorage.getItem("nice_promo_banners");
         if (savedBanners) {
           setBanners(JSON.parse(savedBanners));

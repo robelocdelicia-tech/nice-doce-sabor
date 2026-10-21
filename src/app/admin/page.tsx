@@ -45,6 +45,45 @@ import { PromoBannersManager } from "@/components/admin/PromoBannersManager";
 import { DeliveryManagerTab } from "@/components/admin/DeliveryManagerTab";
 import { StoreSettingsTab } from "@/components/admin/StoreSettingsTab";
 
+function AdminHeaderLogo() {
+  const [error, setError] = useState(false);
+  return (
+    <div className="w-10 h-10 rounded-full border-2 border-nice-pink overflow-hidden p-0.5 bg-white flex items-center justify-center">
+      {error ? (
+        <span className="text-xs font-bold text-nice-pink font-script">NDS</span>
+      ) : (
+        <Image
+          src="/logo.jpg"
+          alt="Logo"
+          width={40}
+          height={40}
+          className="rounded-full object-cover"
+          onError={() => setError(true)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AdminProductThumb({ src, alt }: { src: string; alt: string }) {
+  const [error, setError] = useState(false);
+  return (
+    <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-pink-50 flex-shrink-0 border border-pink-100 flex items-center justify-center">
+      {error || !src ? (
+        <span className="text-[10px] font-bold text-nice-pink font-script">NDS</span>
+      ) : (
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          className="object-cover"
+          onError={() => setError(true)}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<
     "pedidos" | "produtos" | "banners" | "entregas" | "financeiro" | "config"
@@ -322,12 +361,31 @@ export default function AdminPage() {
     localStorage.setItem("nice_promo_banners", JSON.stringify(updated));
   };
 
-  // Carrega produtos personalizados
+  // Carrega produtos personalizados com migração de cache
   useEffect(() => {
     try {
+      const CACHE_VERSION_KEY = "nice_products_v3_real";
+      const hasV3 = localStorage.getItem(CACHE_VERSION_KEY);
       const savedProds = localStorage.getItem("nice_custom_products");
-      if (savedProds) {
-        setProducts(JSON.parse(savedProds));
+
+      if (!hasV3) {
+        localStorage.removeItem("nice_custom_products");
+        localStorage.setItem(CACHE_VERSION_KEY, "true");
+        setProducts(DEFAULT_PRODUCTS);
+      } else if (savedProds) {
+        const parsed = JSON.parse(savedProds);
+        const hasOldRepeatedCake = parsed.filter((p: Product) =>
+          p.images?.[0]?.includes("photo-1578985545062-69928b1d9587")
+        ).length > 1;
+
+        if (hasOldRepeatedCake) {
+          localStorage.removeItem("nice_custom_products");
+          setProducts(DEFAULT_PRODUCTS);
+        } else {
+          setProducts(parsed);
+        }
+      } else {
+        setProducts(DEFAULT_PRODUCTS);
       }
     } catch (e) {
       console.error("Erro ao carregar produtos:", e);
@@ -629,9 +687,7 @@ export default function AdminPage() {
       <header className="bg-white border-b border-pink-100 shadow-sm sticky top-0 z-40 px-4 py-3">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full border-2 border-nice-pink overflow-hidden p-0.5 bg-white">
-              <Image src="/logo.jpg" alt="Logo" width={40} height={40} className="rounded-full object-cover" />
-            </div>
+            <AdminHeaderLogo />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-bold text-nice-wine text-base sm:text-lg">
@@ -1091,9 +1147,10 @@ export default function AdminPage() {
                     className="flex items-center justify-between p-3 rounded-2xl border border-pink-100 bg-[#FFFDFE] hover:border-pink-200 transition text-xs"
                   >
                     <div className="flex items-center gap-3 min-w-0 pr-2">
-                      <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-pink-50 flex-shrink-0 border border-pink-100">
-                        <Image src={p.images[0] || "/logo.jpg"} alt={p.name} fill className="object-cover" />
-                      </div>
+                      <AdminProductThumb
+                        src={p.images[0] || "/logo.jpg"}
+                        alt={p.name}
+                      />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-nice-wine text-sm truncate">{p.name}</span>

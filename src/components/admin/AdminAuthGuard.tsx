@@ -25,6 +25,7 @@ export function AdminAuthGuard({ children }: AdminAuthGuardProps) {
   const [confirmPassword, setConfirmPassword] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [successMsg, setSuccessMsg] = useState<string>("");
+  const [logoError, setLogoError] = useState<boolean>(false);
 
   useEffect(() => {
     // 1. Checa se já está logado na sessão atual
@@ -161,14 +162,21 @@ export function AdminAuthGuard({ children }: AdminAuthGuardProps) {
 
         {/* Logo e Título */}
         <div className="text-center space-y-3 relative z-10">
-          <div className="w-20 h-20 mx-auto rounded-full border-4 border-nice-pink p-1 shadow-lg shadow-pink-500/20 bg-white">
-            <Image
-              src="/logo.jpg"
-              alt="Nice Doce Sabor"
-              width={80}
-              height={80}
-              className="rounded-full object-cover"
-            />
+          <div className="w-20 h-20 mx-auto rounded-full border-4 border-nice-pink p-1 shadow-lg shadow-pink-500/20 bg-white flex items-center justify-center overflow-hidden">
+            {logoError ? (
+              <div className="w-full h-full rounded-full bg-gradient-to-tr from-[#5B1F3A] via-[#E0489A] to-[#FDB362] flex items-center justify-center text-white font-script text-2xl font-bold">
+                NDS
+              </div>
+            ) : (
+              <Image
+                src="/logo.jpg"
+                alt="Nice Doce Sabor"
+                width={80}
+                height={80}
+                className="rounded-full object-cover w-full h-full"
+                onError={() => setLogoError(true)}
+              />
+            )}
           </div>
 
           <div>

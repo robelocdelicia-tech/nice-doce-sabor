@@ -14,6 +14,21 @@ interface HeaderProps {
 export function Header({ store, onOpenStory }: HeaderProps) {
   const status = checkStoreStatus(store);
   const [isDarkLuxury, setIsDarkLuxury] = useState(false);
+  const [logoError, setLogoError] = useState(false);
+  const [logoSrc, setLogoSrc] = useState(store.logo_url || "/logo.jpg");
+
+  useEffect(() => {
+    setLogoSrc(store.logo_url || "/logo.jpg");
+    setLogoError(false);
+  }, [store.logo_url]);
+
+  const handleLogoError = () => {
+    if (logoSrc !== "/logo.jpg") {
+      setLogoSrc("/logo.jpg");
+    } else {
+      setLogoError(true);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -52,15 +67,27 @@ export function Header({ store, onOpenStory }: HeaderProps) {
         <div className="relative mb-3 group cursor-pointer" onClick={onOpenStory}>
           <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full p-1 bg-white shadow-luxury relative flex items-center justify-center">
             {/* Anel com borda pontilhada característica da marca */}
-            <div className="w-full h-full rounded-full border-2 border-dashed border-nice-pink flex items-center justify-center overflow-hidden relative">
-              <Image
-                src={store.logo_url || "/logo.jpg"}
-                alt={store.name}
-                width={128}
-                height={128}
-                className="object-cover w-full h-full rounded-full transition-transform duration-300 group-hover:scale-105"
-                priority
-              />
+            <div className="w-full h-full rounded-full border-2 border-dashed border-nice-pink flex items-center justify-center overflow-hidden relative bg-pink-50">
+              {logoError ? (
+                <div className="w-full h-full bg-gradient-to-tr from-[#5B1F3A] via-[#E0489A] to-[#FDB362] flex flex-col items-center justify-center text-white select-none shadow-inner p-2">
+                  <span className="font-script text-3xl sm:text-4xl font-bold tracking-wider drop-shadow-md">
+                    NDS
+                  </span>
+                  <span className="text-[9px] uppercase tracking-widest font-semibold opacity-95">
+                    Nice Doce Sabor
+                  </span>
+                </div>
+              ) : (
+                <Image
+                  src={logoSrc}
+                  alt={store.name}
+                  width={128}
+                  height={128}
+                  className="object-cover w-full h-full rounded-full transition-transform duration-300 group-hover:scale-105"
+                  priority
+                  onError={handleLogoError}
+                />
+              )}
             </div>
             {/* Ícone de coração no canto da logo */}
             <div className="absolute bottom-1 right-1 bg-nice-pink text-white p-1.5 rounded-full shadow-md">

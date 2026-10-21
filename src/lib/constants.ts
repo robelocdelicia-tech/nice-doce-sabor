@@ -107,8 +107,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "Brownie clássico de puro cacau, super macio por dentro e com casquinha crocante irresistível.",
     base_price: 5.0,
     images: [
-      "/products/brownies_ai.jpg",
       "/products/real/brownies.jpg",
+      "https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=800&auto=format&fit=crop&q=80",
     ],
     variations: [],
     add_ons: [],
@@ -146,6 +146,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     base_price: 6.0,
     images: [
       "/products/pudim_ai.jpg",
+      "https://images.unsplash.com/photo-1541783245831-57d6fb0926d3?w=800&auto=format&fit=crop&q=80",
     ],
     variations: [],
     add_ons: [],
@@ -163,8 +164,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "Taça generosa com brigadeiro branco cremoso, uvas verdes frescas inteiras e cobertura de chocolate ao leite.",
     base_price: 13.0,
     images: [
-      "/products/bombom_uva_ai.jpg",
       "/products/real/bombom_uva.jpg",
+      "/products/bombom_uva_ai.jpg",
+      "https://images.unsplash.com/photo-1579372786545-d24232daf58c?w=800&auto=format&fit=crop&q=80",
     ],
     variations: [],
     add_ons: [],
@@ -183,6 +185,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     base_price: 13.0,
     images: [
       "/products/real/bombom_brownie.jpg",
+      "https://images.unsplash.com/photo-1582293041079-7814c2f12063?w=800&auto=format&fit=crop&q=80",
     ],
     variations: [],
     add_ons: [],
@@ -200,6 +203,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     base_price: 13.0,
     images: [
       "/products/real/torta_abacaxi.jpg",
+      "https://images.unsplash.com/photo-1535141192574-5d4897c13136?w=800&auto=format&fit=crop&q=80",
     ],
     variations: [],
     add_ons: [],
@@ -216,8 +220,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "Mini bolo vulcão com cobertura generosa de brigadeiro nobre que escorre ao cortar, decorado com confeitos especiais.",
     base_price: 17.0,
     images: [
-      "/products/vulcao_ai.jpg",
       "/products/real/vulcao.jpg",
+      "/products/vulcao_ai.jpg",
     ],
     variations: [],
     add_ons: [],
@@ -239,8 +243,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "Camadas fartas de bolo úmido artesanal intercaladas com nossos cremes nobres e frutas frescas.",
     base_price: 10.0,
     images: [
-      "/products/bolo_pote_ai.jpg",
       "/products/real/bolo_pote.jpg",
+      "/products/bolo_pote_ai.jpg",
+      "https://images.unsplash.com/photo-1587314168485-3236d6710814?w=800&auto=format&fit=crop&q=80",
     ],
     variations: [
       // Faixa R$ 10,00
@@ -277,6 +282,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     base_price: 14.0,
     images: [
       "/products/fatia_bolo_ai.jpg",
+      "https://images.unsplash.com/photo-1588195538326-c5b1e9f80a1b?w=800&auto=format&fit=crop&q=80",
     ],
     variations: [
       { name: "Prestígio", price: 14.0 },
@@ -302,8 +308,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "Casquinha de sorvete super crocante banhada no chocolate por dentro e por fora, recheada até a pontinha.",
     base_price: 8.0,
     images: [
-      "/products/cone_trufado_ai.jpg",
       "/products/real/cone_trufado.jpg",
+      "/products/cone_trufado_ai.jpg",
+      "https://images.unsplash.com/photo-1505394033641-40c6ad1178d7?w=800&auto=format&fit=crop&q=80",
     ],
     variations: [
       { name: "Brigadeiro", price: 8.0 },
@@ -329,6 +336,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     base_price: 17.0,
     images: [
       "/products/salgados_festa_ai.jpg",
+      "https://images.unsplash.com/photo-1541592106381-b31e9677c0e5?w=800&auto=format&fit=crop&q=80",
     ],
     variations: [
       { name: "15 salgados", price: 17.0 },
@@ -372,6 +380,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     base_price: 7.0,
     images: [
       "/products/real/empada_frango.jpg",
+      "https://images.unsplash.com/photo-1621996346565-e3d5d62817d2?w=800&auto=format&fit=crop&q=80",
     ],
     variations: [],
     add_ons: [],
@@ -389,8 +398,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "Massa artesanal que derrete na boca com recheio nobre de charque refogado e requeijão cremoso.",
     base_price: 10.0,
     images: [
-      "/products/empada_charque_ai.jpg",
       "/products/real/empada_charque.jpg",
+      "/products/empada_charque_ai.jpg",
     ],
     variations: [],
     add_ons: [],
@@ -408,8 +417,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "Porção farta de empadão de frango cremoso bem recheado com massa douradinha no ponto perfeito.",
     base_price: 13.0,
     images: [
-      "/products/empadao_frango_ai.jpg",
       "/products/real/empadao_frango.jpg",
+      "/products/empadao_frango_ai.jpg",
     ],
     variations: [],
     add_ons: [],
@@ -430,6 +439,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "O lanche perfeito: bolo de 350g + 10 coxinhas crocantes + 10 brigadeiros gourmet artesanais.",
     base_price: 49.99,
     images: [
+      "https://images.unsplash.com/photo-1513151233558-d860c5398176?w=800&auto=format&fit=crop&q=80",
       "/products/kit_festa_ai.jpg",
     ],
     variations: [],
@@ -449,6 +459,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     base_price: 99.99,
     images: [
       "/products/kit_festa_ai.jpg",
+      "/products/real/vulcao.jpg",
     ],
     variations: [],
     add_ons: [],
@@ -466,6 +477,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "Surpreenda quem você ama: 1 Bolo Vulcão de 500g + 20 doces gourmet + 30 salgados crocantes.",
     base_price: 99.99,
     images: [
+      "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=800&auto=format&fit=crop&q=80",
       "/products/kit_festa_ai.jpg",
     ],
     variations: [],
@@ -484,7 +496,8 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "Combo saboroso para casal ou dupla: salgados artesanais sequinhos + docinhos finos da Nice Doce Sabor.",
     base_price: 35.0,
     images: [
-      "/products/kit_festa_ai.jpg",
+      "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800&auto=format&fit=crop&q=80",
+      "/products/salgados_festa_ai.jpg",
     ],
     variations: [],
     add_ons: [],
@@ -501,6 +514,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "Para pequenas confraternizações: Bolo decorado de 1kg + 50 doces artesanais + 100 salgados de festa.",
     base_price: 249.99,
     images: [
+      "https://images.unsplash.com/photo-1535141192574-5d4897c13136?w=800&auto=format&fit=crop&q=80",
       "/products/kit_festa_ai.jpg",
     ],
     variations: [],
@@ -519,6 +533,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "A festa pronta completa: 2kg de bolo decorado + 100 docinhos gourmet + 150 salgados fritos + 1 vela vulcão de brinde!",
     base_price: 454.99,
     images: [
+      "https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?w=800&auto=format&fit=crop&q=80",
       "/products/kit_festa_ai.jpg",
     ],
     variations: [],
@@ -542,6 +557,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     base_price: 6.0,
     images: [
       "/products/sucos_polpa_ai.jpg",
+      "https://images.unsplash.com/photo-1613478223719-2ab802602423?w=800&auto=format&fit=crop&q=80",
     ],
     variations: [
       // Sem Leite (R$ 6,00)
@@ -574,7 +590,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     description: "Refrigerante geladinho na garrafinha mini, ideal para o lanche.",
     base_price: 3.5,
     images: [
-      "https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=800&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1629203851122-3726ecdf080e?w=800&auto=format&fit=crop&q=80",
     ],
     variations: [
       { name: "Antarctica (Mini 200ml)", price: 3.5 },

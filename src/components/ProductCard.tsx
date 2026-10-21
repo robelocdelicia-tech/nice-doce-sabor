@@ -5,12 +5,45 @@ import Image from "next/image";
 import { Product, ProductVariation } from "@/types";
 import { useCart } from "@/context/CartContext";
 import { formatCurrency } from "@/lib/utils";
-import { Plus, Minus, Maximize2, MessageSquarePlus, Check } from "lucide-react";
+import { Plus, Minus, Maximize2, MessageSquarePlus, Check, Sparkles, Heart } from "lucide-react";
 
 interface ProductCardProps {
   product: Product;
   onOpenImageModal: (imageSrc: string, title: string) => void;
   onOpenCustomModal: (product: Product, variation?: ProductVariation) => void;
+}
+
+function FlavorThumbnail({
+  src,
+  alt,
+  onClick,
+}: {
+  src: string;
+  alt: string;
+  onClick: () => void;
+}) {
+  const [thumbError, setThumbError] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative w-8 h-8 rounded-lg overflow-hidden bg-pink-50 flex-shrink-0 border border-pink-200 flex items-center justify-center"
+      title="Ver foto deste sabor"
+    >
+      {thumbError || !src ? (
+        <span className="text-[9px] font-bold text-nice-pink">NDS</span>
+      ) : (
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          className="object-cover"
+          onError={() => setThumbError(true)}
+        />
+      )}
+    </button>
+  );
 }
 
 export function ProductCard({
@@ -19,15 +52,21 @@ export function ProductCard({
   onOpenCustomModal,
 }: ProductCardProps) {
   const { getItemQuantity, quickIncrement, quickDecrement } = useCart();
+  const [imageIndex, setImageIndex] = useState(0);
   const [imageError, setImageError] = useState(false);
 
-  const fallbackImage =
-    "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=800&auto=format&fit=crop&q=80";
+  const imagesList = product.images && product.images.length > 0 ? product.images : [];
+  const currentImageUrl = imagesList[imageIndex] || "";
 
-  const primaryImage =
-    product.images && product.images.length > 0 && !imageError
-      ? product.images[0]
-      : fallbackImage;
+  const handleImageError = () => {
+    if (imageIndex < imagesList.length - 1) {
+      setImageIndex((prev) => prev + 1);
+    } else {
+      setImageError(true);
+    }
+  };
+
+  const primaryImage = !imageError && currentImageUrl ? currentImageUrl : "";
 
   const hasFlavors = product.variations && product.variations.length > 0;
 
@@ -57,26 +96,38 @@ export function ProductCard({
       <div>
         {/* Topo: Imagem com Abertura em Tela Cheia ao Tocar */}
         <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] rounded-2xl overflow-hidden bg-pink-50 mb-3.5 group">
-          <Image
-            src={primaryImage}
-            alt={product.name}
-            fill
-            sizes="(max-width: 640px) 100vw, 50vw"
-            className="object-cover group-hover:scale-105 transition-transform duration-500 cursor-pointer"
-            onClick={() => onOpenImageModal(primaryImage, product.name)}
-            onError={() => setImageError(true)}
-            priority={false}
-          />
+          {imageError || !primaryImage ? (
+            <div className="w-full h-full bg-gradient-to-tr from-[#FFF0F7] via-[#FFF8FC] to-[#FFE8F3] flex flex-col items-center justify-center p-4 text-center select-none border border-pink-100">
+              <div className="w-12 h-12 rounded-full bg-nice-pink/10 text-nice-pink flex items-center justify-center mb-2 shadow-sm">
+                <Sparkles className="w-6 h-6 text-nice-pink" />
+              </div>
+              <span className="font-bold text-nice-wine text-xs uppercase tracking-wider line-clamp-1">{product.name}</span>
+              <span className="text-[10px] text-nice-pink font-semibold mt-0.5">Nice Doce Sabor</span>
+            </div>
+          ) : (
+            <Image
+              src={primaryImage}
+              alt={product.name}
+              fill
+              sizes="(max-width: 640px) 100vw, 50vw"
+              className="object-cover group-hover:scale-105 transition-transform duration-500 cursor-pointer"
+              onClick={() => onOpenImageModal(primaryImage, product.name)}
+              onError={handleImageError}
+              priority={false}
+            />
+          )}
 
           {/* Botão de Zoom / Ver Foto em Tela Cheia */}
-          <button
-            onClick={() => onOpenImageModal(primaryImage, product.name)}
-            className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm transition"
-            title="Ver foto em tela cheia"
-            aria-label="Ver foto ampliada"
-          >
-            <Maximize2 className="w-3.5 h-3.5" />
-          </button>
+          {!imageError && primaryImage && (
+            <button
+              onClick={() => onOpenImageModal(primaryImage, product.name)}
+              className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm transition"
+              title="Ver foto em tela cheia"
+              aria-label="Ver foto ampliada"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+          )}
 
           {/* Badge de Destaque */}
           {product.badge && (
@@ -138,24 +189,16 @@ export function ProductCard({
                       >
                         {/* Nome do Sabor e Mini Foto Clicável */}
                         <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                          <button
-                            type="button"
+                          <FlavorThumbnail
+                            src={flavorImg}
+                            alt={flavor.name}
                             onClick={() =>
                               onOpenImageModal(
                                 flavorImg,
                                 `${product.name} - ${flavor.name}`
                               )
                             }
-                            className="relative w-8 h-8 rounded-lg overflow-hidden bg-pink-50 flex-shrink-0 border border-pink-200"
-                            title="Ver foto deste sabor"
-                          >
-                            <Image
-                              src={flavorImg}
-                              alt={flavor.name}
-                              fill
-                              className="object-cover"
-                            />
-                          </button>
+                          />
 
                           <div className="min-w-0">
                             <span className="font-semibold text-xs sm:text-sm text-nice-wine block truncate">
