@@ -1,0 +1,173 @@
+@import url('https://fonts.googleapis.com/css2?family=Great+Vibes&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-script: 'Great Vibes', cursive;
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  --font-serif: 'Playfair Display', serif;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: #FFF5FA;
+  color: #3B1024;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Remove atraso de 300ms do toque no mobile */
+button, a, input, select, textarea {
+  touch-action: manipulation;
+}
+
+/* Evita que o iOS Safari dê zoom automático ao focar em inputs */
+@media (max-width: 640px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Scrollbar Rosa Delicado */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FFF0F7;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #E0489A;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #C22B7E;
+}
+
+/* Borda pontilhada rosa da logo */
+.dotted-brand-border {
+  border: 2px dashed #E0489A;
+  border-spacing: 4px;
+}
+
+/* Efeito Dourado Champanhe Brilhante */
+.gold-shimmer {
+  background: linear-gradient(135deg, #C9A45C 0%, #F5E8C7 50%, #C9A45C 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-badge {
+  background: linear-gradient(135deg, #C9A45C 0%, #D8B772 100%);
+  color: #FFFFFF;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+/* Suporte de Impressão Térmica (58mm e 80mm) sem margens desnecessárias */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #thermal-receipt, #thermal-receipt * {
+    visibility: visible;
+  }
+  #thermal-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 8px;
+    font-size: 12px;
+    color: #000000 !important;
+    background: #FFFFFF !important;
+  }
+  @page {
+    size: auto;
+    margin: 0mm;
+  }
+}
+
+/* ========================================================================= */
+/* MODO ESCURO "LUXO" (VINHO PROFUNDO + DOURADO CHAMPANHE + ROSA SUAVE)      */
+/* ========================================================================= */
+.dark-luxury {
+  background-color: #17030D !important;
+  color: #FFF0F7 !important;
+}
+
+.dark-luxury body {
+  background-color: #17030D !important;
+  color: #FFF0F7 !important;
+}
+
+.dark-luxury header {
+  background: linear-gradient(to bottom, #220614, #1B0410, #17030D) !important;
+  border-color: #4A132D !important;
+}
+
+.dark-luxury footer {
+  background-color: #1C0410 !important;
+  border-color: #3D0E23 !important;
+}
+
+.dark-luxury .bg-white {
+  background-color: #260718 !important;
+  color: #FFF0F7 !important;
+}
+
+.dark-luxury .bg-\[\#FFF5FA\],
+.dark-luxury .bg-\[\#FFF8FC\],
+.dark-luxury .bg-pink-50,
+.dark-luxury .bg-pink-50\/50,
+.dark-luxury .bg-pink-50\/40 {
+  background-color: #210514 !important;
+}
+
+.dark-luxury .text-nice-wine {
+  color: #FFEBF5 !important;
+}
+
+.dark-luxury .text-nice-wine\/80,
+.dark-luxury .text-nice-wine\/70,
+.dark-luxury .text-gray-500,
+.dark-luxury .text-gray-600 {
+  color: #DDA8C3 !important;
+}
+
+.dark-luxury .border-pink-100,
+.dark-luxury .border-pink-200 {
+  border-color: #47152D !important;
+}
+
+.dark-luxury input,
+.dark-luxury select,
+.dark-luxury textarea {
+  background-color: #2C091C !important;
+  border-color: #5A193A !important;
+  color: #FFFFFF !important;
+}
+
+.dark-luxury input::placeholder,
+.dark-luxury textarea::placeholder {
+  color: #9C587B !important;
+}
+
+.dark-luxury .shadow-sm,
+.dark-luxury .shadow-md,
+.dark-luxury .shadow-card-3d {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
+}
+

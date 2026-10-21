@@ -1,0 +1,29 @@
+categoria,nome,preco_base,descricao,variacoes,imagem,destaque
+Doces,Trufas Artesanais,4.00,Trufa artesanal cremosa com chocolate nobre e recheio aveludado.,Brigadeiro:4.00;Beijinho:4.00;Uva:4.00;Café:4.00;Maracujá:4.00;Morango:4.00;Ninho com Nutella:4.00;Dois amores:4.00,,Artesanal
+Doces,Tortinha doce,6.00,Massa crocante artesanal com recheio doce e cobertura delicada.,,,
+Doces,Brownie tradicional,5.00,Brownie macio por dentro e com casquinha crocante por fora.,,,/products/brownies_ai.jpg,Mais Pedido
+Doces,Brownie recheado,8.00,Brownie super recheado com camadas generosas.,,,/products/brownies_ai.jpg,Destaque
+Doces,Pudim,6.00,Pudim de leite condensado tradicional super lisinho com calda de caramelo.,,/products/pudim_ai.jpg,Novo
+Doces,Bombom de uva,13.00,Uvas frescas selecionadas envolvidas em brigadeiro branco e banhadas no chocolate.,,/products/bombom_uva_ai.jpg,Super Sucesso
+Doces,Bombom de brownie,13.00,Pedaços generosos de brownie e recheio nobre banhados em chocolate belga.,,/products/real/bombom_brownie.jpg,
+Doces,Torta de abacaxi,13.00,Fatia de torta gelada artesanal de abacaxi com creme especial.,,/products/real/torta_abacaxi.jpg,
+Doces,Vulcão,17.00,Mini bolo vulcão com avalanche cremosa de recheio ao cortar.,,/products/vulcao_ai.jpg,Mais Pedido
+Bolo no pote,Bolo no pote,10.00,Camadas generosas de bolo fofinho e recheio artesanal cremoso no pote.,Prestígio:10.00;Brigadeiro:10.00;Cenoura com chocolate:10.00;Chocolate com maracujá:10.00;Maracujá:10.00;Choconinho com Nutella:10.00;Ninho com Nutella:10.00;Doce de leite c/ beijinho:10.00;Limão:10.00;Ninho com morango:12.00;Choconinho com morango:12.00,/products/bolo_pote_ai.jpg,Mais Pedido
+Fatias,Fatia de Bolo,14.00,Fatia generosa de bolo decorado recheado artesanalmente.,Prestígio:14.00;Brigadeiro:14.00;Ninho com geleia de morango:14.00,/products/fatia_bolo_ai.jpg,Destaque
+Cones trufados,Cone trufado,8.00,Casquinha de sorvete banhada no chocolate e recheada até a pontinha.,Brigadeiro:8.00;Ninho com Nutella:8.00,/products/cone_trufado_ai.jpg,Mais Pedido
+Salgados,Salgados de Festa (Porções & Cento),17.00,Coxinhas crocantes e bolinhas de queijo douradas feitas na hora.,15 salgados:17.00;25 salgados:27.00;50 salgados:52.50;100 salgados (Cento):95.00,/products/salgados_festa_ai.jpg,Mais Pedido
+Salgados,Salgadinho no Pacote,6.00,Pacotinho artesanal crocante de salgadinhos finos.,Queijo:6.00;Cebola:6.00,,
+Salgados,Empada de frango,7.00,Massa podre artesanal que derrete na boca com frango desfiado bem temperado.,,/products/real/empada_frango.jpg,Favorito
+Salgados,Empada de charque c/ requeijão,10.00,Empada recheada com charque desfiado refogado e requeijão cremoso.,,/products/empada_charque_ai.jpg,Top Sabor
+Salgados,Empadão de frango,13.00,Porção generosa de empadão de frango cremoso bem recheado.,,/products/empadao_frango_ai.jpg,
+Kits Festa,Combo festa individual,49.99,Bolo de 350g mais 10 coxinhas crocantes e 10 brigadeiros gourmet.,,/products/kit_festa_ai.jpg,Econômico
+Kits Festa,Kit festa só 1 bolinho,99.99,1 Bolo Vulcão delicioso mais 20 docinhos gourmet e 30 salgados artesanais.,,/products/kit_festa_ai.jpg,Campeão de Vendas
+Kits Festa,Kit surpresa,99.99,Bolo Vulcão de 500g mais 20 doces gourmet e 30 salgados crocantes.,,/products/kit_festa_ai.jpg,Especial
+Kits Festa,Kit delícia 2 pessoas,35.00,Combo perfeito para duas pessoas: salgados artesanais e docinhos selecionados.,,/products/kit_festa_ai.jpg,
+Kits Festa,Kit só um bolinho grande,249.99,Bolo decorado de 1kg mais 50 doces artesanais e 100 salgados de festa.,,/products/kit_festa_ai.jpg,Destaque
+Kits Festa,Kit festa completo (Serve até 25 pessoas),454.99,2kg de bolo decorado mais 100 docinhos e 150 salgados com 1 vela vulcão de brinde.,,/products/kit_festa_ai.jpg,Vela Grátis 🎉
+Bebidas,Sucos da Polpa (500ml),6.00,Suco natural refrescante com polpa selecionada da fruta batida na hora.,Maracujá (Sem leite):6.00;Acerola (Sem leite):6.00;Cajá (Sem leite):6.00;Caju (Sem leite):6.00;Graviola (Sem leite):6.00;Manga (Sem leite):6.00;Maracujá (Com leite):7.00;Acerola (Com leite):7.00;Cajá (Com leite):7.00;Caju (Com leite):7.00;Graviola (Com leite):7.00;Manga (Com leite):7.00,/products/sucos_polpa_ai.jpg,Fruta Natural
+Bebidas,Refrigerante Mini (200ml),3.50,Refrigerante geladinho na garrafinha mini.,Antarctica (Mini 200ml):3.50;Fanta (Mini 200ml):3.50;Coca original (Mini 200ml):4.00;Coca zero (Mini 200ml):4.00,,
+Bebidas,Refrigerante Lata (350ml),6.00,Refrigerante em lata bem gelado.,Coca original (Lata 350ml):6.00;Coca zero (Lata 350ml):6.00;Antarctica (Lata 350ml):6.00,,
+Bebidas,Coca-Cola 1,5L,10.00,Garrafa de Coca-Cola 1,5L gelada para comemorações e combos.,,,
+Bebidas,Água mineral (500ml),2.00,Garrafinha de água mineral sem gás 500ml bem geladinha.,,,

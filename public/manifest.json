@@ -1,0 +1,18 @@
+{
+  "name": "Nice Doce Sabor - Confeitaria Artesanal",
+  "short_name": "Nice Doce",
+  "description": "Cardápio digital de luxo e encomendas Nice Doce Sabor por Eunice Pereira",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFF5FA",
+  "theme_color": "#E0489A",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}

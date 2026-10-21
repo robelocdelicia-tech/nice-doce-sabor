@@ -1,0 +1,1388 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { Order, Product, ProductVariation, Category, Store, Neighborhood, PromoBanner } from "@/types";
+import { DEFAULT_STORE, DEFAULT_CATEGORIES, DEFAULT_PRODUCTS, DEFAULT_PROMO_BANNERS } from "@/lib/constants";
+import {
+  formatCurrency,
+  formatPhone,
+  checkStoreStatus,
+  generateCustomerStatusWhatsAppUrl,
+} from "@/lib/utils";
+import {
+  Bell,
+  Clock,
+  Printer,
+  MessageCircle,
+  CheckCircle2,
+  AlertCircle,
+  Truck,
+  DollarSign,
+  Package,
+  Plus,
+  Trash2,
+  FileSpreadsheet,
+  Download,
+  ShieldAlert,
+  Sparkles,
+  Search,
+  ExternalLink,
+  ChevronRight,
+  Filter,
+  RefreshCw,
+  Wand2,
+  Edit,
+  Settings,
+} from "lucide-react";
+import { ProductFormModal } from "@/components/admin/ProductFormModal";
+import { AIImageStudioModal } from "@/components/admin/AIImageStudioModal";
+import { ManualOrderModal } from "@/components/admin/ManualOrderModal";
+import { EditOrderModal } from "@/components/admin/EditOrderModal";
+import { AdminAuthGuard } from "@/components/admin/AdminAuthGuard";
+import { PromoBannersManager } from "@/components/admin/PromoBannersManager";
+import { DeliveryManagerTab } from "@/components/admin/DeliveryManagerTab";
+import { StoreSettingsTab } from "@/components/admin/StoreSettingsTab";
+
+export default function AdminPage() {
+  const [activeTab, setActiveTab] = useState<
+    "pedidos" | "produtos" | "banners" | "entregas" | "financeiro" | "config"
+  >("pedidos");
+
+  const [store, setStore] = useState<Store>(DEFAULT_STORE);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [products, setProducts] = useState<Product[]>(DEFAULT_PRODUCTS);
+  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
+  const [banners, setBanners] = useState<PromoBanner[]>(DEFAULT_PROMO_BANNERS);
+  const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [autoPrintEnabled, setAutoPrintEnabled] = useState<boolean>(true);
+  const [autoPrintToast, setAutoPrintToast] = useState<string>("");
+
+  // Filtros de pedidos
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all");
+  const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
+
+  // Importador em massa
+  const [importText, setImportText] = useState("");
+  const [importSuccess, setImportSuccess] = useState("");
+
+  // Modais de Criação e IA
+  const [isProductFormOpen, setIsProductFormOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [isAIStudioOpen, setIsAIStudioOpen] = useState(false);
+  const [isManualOrderOpen, setIsManualOrderOpen] = useState(false);
+
+  // Modal de exclusão financeira (dupla confirmação)
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetConfirmWord, setResetConfirmWord] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+
+  // Sino de Novo Pedido (Web Audio API nativa sem depender de arquivos externos)
+  const playNewOrderChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+
+      // 1º Tom (523.25 Hz)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = "sine";
+      osc1.frequency.setValueAtTime(523.25, now);
+      gain1.gain.setValueAtTime(0.25, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.35);
+
+      // 2º Tom alegre (659.25 Hz)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = "sine";
+      osc2.frequency.setValueAtTime(659.25, now + 0.12);
+      gain2.gain.setValueAtTime(0.3, now + 0.12);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.12);
+      osc2.stop(now + 0.55);
+
+      // 3º Tom de confirmação (783.99 Hz)
+      const osc3 = ctx.createOscillator();
+      const gain3 = ctx.createGain();
+      osc3.type = "sine";
+      osc3.frequency.setValueAtTime(783.99, now + 0.25);
+      gain3.gain.setValueAtTime(0.35, now + 0.25);
+      gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+      osc3.connect(gain3);
+      gain3.connect(ctx.destination);
+      osc3.start(now + 0.25);
+      osc3.stop(now + 0.8);
+    } catch (e) {
+      console.warn("Autoplay de som aguardando interação:", e);
+    }
+  };
+
+  const loadOrders = (triggerAutoPrint: boolean = false) => {
+    try {
+      const savedOrders = localStorage.getItem("nice_orders");
+      if (savedOrders) {
+        const parsedOrders: Order[] = JSON.parse(savedOrders);
+        setOrders(parsedOrders);
+
+        // IMPRESSÃO AUTOMÁTICA ASSIM QUE O PEDIDO SAI:
+        if (triggerAutoPrint) {
+          const unprintedOrder = parsedOrders.find(
+            (o) => !o.is_printed && o.order_status !== "cancelled"
+          );
+
+          if (unprintedOrder) {
+            if (soundEnabled) {
+              playNewOrderChime();
+            }
+
+            const isAutoActive = localStorage.getItem("nice_auto_print") !== "false";
+            if (isAutoActive) {
+              setAutoPrintToast(
+                `🖨️ Pedido #${unprintedOrder.order_number} (${unprintedOrder.customer_name}) enviado para impressão automática!`
+              );
+              setTimeout(() => setAutoPrintToast(""), 6000);
+
+              // Marca como impresso imediatamente para não duplicar impressão
+              const marked = parsedOrders.map((o) =>
+                o.id === unprintedOrder.id
+                  ? { ...o, is_printed: true, printed_at: new Date().toISOString() }
+                  : o
+              );
+              setOrders(marked);
+              localStorage.setItem("nice_orders", JSON.stringify(marked));
+
+              // Dispara a impressão na impressora térmica
+              setPrintingOrder(unprintedOrder);
+              setTimeout(() => {
+                window.print();
+              }, 300);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao carregar pedidos:", e);
+    }
+  };
+
+  // Carrega preferências e inicializa polling com detecção em tempo real
+  useEffect(() => {
+    const savedAuto = localStorage.getItem("nice_auto_print");
+    if (savedAuto !== null) {
+      setAutoPrintEnabled(savedAuto === "true");
+    }
+
+    const savedStore = localStorage.getItem("nice_store_settings");
+    if (savedStore) {
+      try {
+        setStore(JSON.parse(savedStore));
+      } catch (e) {
+        console.error("Erro ao carregar store:", e);
+      }
+    }
+
+    const savedNh = localStorage.getItem("nice_neighborhoods");
+    if (savedNh) {
+      try {
+        setNeighborhoods(JSON.parse(savedNh));
+      } catch (e) {
+        console.error("Erro ao carregar bairros:", e);
+      }
+    }
+
+    loadOrders(false); // Carga inicial sem imprimir anteriores
+
+    const interval = setInterval(() => {
+      loadOrders(true); // Checa a cada 3 segundos com disparo automático de impressão
+    }, 3000);
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "nice_orders") {
+        loadOrders(true);
+      }
+      if (e.key === "nice_store_settings" && e.newValue) {
+        try {
+          setStore(JSON.parse(e.newValue));
+        } catch (err) {}
+      }
+      if (e.key === "nice_neighborhoods" && e.newValue) {
+        try {
+          setNeighborhoods(JSON.parse(e.newValue));
+        } catch (err) {}
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [soundEnabled]);
+
+  const saveOrders = (updated: Order[]) => {
+    setOrders(updated);
+    localStorage.setItem("nice_orders", JSON.stringify(updated));
+  };
+
+  const handleSaveStore = (updatedStore: Store) => {
+    setStore(updatedStore);
+    localStorage.setItem("nice_store_settings", JSON.stringify(updatedStore));
+    window.dispatchEvent(new Event("storage"));
+  };
+
+  const handleUpdateDeliveryEnabled = (enabled: boolean) => {
+    const updated = { ...store, delivery_enabled: enabled };
+    setStore(updated);
+    localStorage.setItem("nice_store_settings", JSON.stringify(updated));
+    window.dispatchEvent(new Event("storage"));
+  };
+
+  const handleSaveNeighborhoods = (items: Neighborhood[]) => {
+    setNeighborhoods(items);
+    localStorage.setItem("nice_neighborhoods", JSON.stringify(items));
+    window.dispatchEvent(new Event("storage"));
+  };
+
+  const handleToggleAutoPrint = () => {
+    const nextVal = !autoPrintEnabled;
+    setAutoPrintEnabled(nextVal);
+    localStorage.setItem("nice_auto_print", String(nextVal));
+  };
+
+  const handleTestPrint = () => {
+    const testOrder: Order = {
+      id: `test_${Date.now()}`,
+      order_number: 9999,
+      customer_name: "Teste de Impressão Térmica",
+      customer_phone: "81988896169",
+      order_type: "pickup",
+      delivery_fee: 0,
+      subtotal: 35.0,
+      discount: 0,
+      total: 35.0,
+      payment_method: "pix",
+      payment_status: "paid",
+      order_status: "received",
+      notes: "Teste de alinhamento e corte 58mm / 80mm",
+      is_printed: true,
+      created_at: new Date().toISOString(),
+      items: [
+        {
+          product_name: "Bolo Vulcão de Brigadeiro",
+          unit_price: 17.0,
+          quantity: 1,
+          total_price: 17.0,
+        },
+        {
+          product_name: "Trufas Artesanais",
+          unit_price: 4.0,
+          quantity: 2,
+          selected_variation: { name: "Ninho com Nutella", price: 4.0 },
+          total_price: 8.0,
+        },
+        {
+          product_name: "Empadão de Frango",
+          unit_price: 10.0,
+          quantity: 1,
+          total_price: 10.0,
+        },
+      ],
+    };
+    setPrintingOrder(testOrder);
+    setTimeout(() => {
+      window.print();
+    }, 250);
+  };
+
+  // Carrega banners personalizados
+  useEffect(() => {
+    try {
+      const savedBanners = localStorage.getItem("nice_promo_banners");
+      if (savedBanners) {
+        setBanners(JSON.parse(savedBanners));
+      }
+    } catch (e) {
+      console.error("Erro ao carregar banners:", e);
+    }
+  }, []);
+
+  const handleSaveBanners = (updated: PromoBanner[]) => {
+    setBanners(updated);
+    localStorage.setItem("nice_promo_banners", JSON.stringify(updated));
+  };
+
+  // Carrega produtos personalizados
+  useEffect(() => {
+    try {
+      const savedProds = localStorage.getItem("nice_custom_products");
+      if (savedProds) {
+        setProducts(JSON.parse(savedProds));
+      }
+    } catch (e) {
+      console.error("Erro ao carregar produtos:", e);
+    }
+  }, []);
+
+  // Atualização de status com 1 toque
+  const handleUpdateOrderStatus = (
+    orderId: string,
+    newStatus: Order["order_status"],
+    autoWhatsApp: boolean = false
+  ) => {
+    const updated = orders.map((o) => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          order_status: newStatus,
+          payment_status: newStatus === "confirmed" ? ("paid" as const) : o.payment_status,
+        };
+      }
+      return o;
+    });
+    saveOrders(updated);
+
+    const targetOrder = orders.find((o) => o.id === orderId);
+    if (autoWhatsApp && targetOrder) {
+      let type: "ready" | "out" | "paid" = "ready";
+      if (newStatus === "ready") type = "ready";
+      if (newStatus === "out_for_delivery") type = "out";
+      if (newStatus === "confirmed") type = "paid";
+
+      const url = generateCustomerStatusWhatsAppUrl(targetOrder, type, store);
+      window.open(url, "_blank");
+    }
+  };
+
+  // Marcar como pago manualmente ao conferir comprovante
+  const handleMarkAsPaid = (orderId: string) => {
+    const updated = orders.map((o) => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          payment_status: "paid" as const,
+          paid_at: new Date().toISOString(),
+          paid_confirmed_by: "Eunice Pereira (Admin)",
+        };
+      }
+      return o;
+    });
+    saveOrders(updated);
+  };
+
+  // Disparo manual para o WhatsApp do cliente
+  const handleSendCustomWhatsApp = (
+    order: Order,
+    type: "ready" | "out" | "paid"
+  ) => {
+    const url = generateCustomerStatusWhatsAppUrl(order, type, store);
+    window.open(url, "_blank");
+  };
+
+  // Impressão da comanda térmica (58mm/80mm)
+  const handlePrintReceipt = (order: Order) => {
+    setPrintingOrder(order);
+    setTimeout(() => {
+      window.print();
+      // Marca como impresso
+      const updated = orders.map((o) =>
+        o.id === order.id ? { ...o, is_printed: true, printed_at: new Date().toISOString() } : o
+      );
+      saveOrders(updated);
+    }, 100);
+  };
+
+  // Salvar ou atualizar produto com persistência
+  const handleSaveProduct = (newProd: Product) => {
+    setProducts((prev) => {
+      const idx = prev.findIndex((p) => p.id === newProd.id);
+      let updated: Product[];
+      if (idx > -1) {
+        updated = [...prev];
+        updated[idx] = newProd;
+      } else {
+        updated = [newProd, ...prev];
+      }
+      try {
+        localStorage.setItem("nice_custom_products", JSON.stringify(updated));
+        window.dispatchEvent(new Event("storage"));
+      } catch (e) {
+        console.error("Erro ao salvar produto:", e);
+      }
+      return updated;
+    });
+  };
+
+  // Excluir produto com persistência
+  const handleDeleteProduct = (productId: string) => {
+    if (!confirm("Tem certeza que deseja excluir este produto do cardápio?")) return;
+    setProducts((prev) => {
+      const updated = prev.filter((p) => p.id !== productId);
+      try {
+        localStorage.setItem("nice_custom_products", JSON.stringify(updated));
+        window.dispatchEvent(new Event("storage"));
+      } catch (e) {
+        console.error("Erro ao excluir produto:", e);
+      }
+      return updated;
+    });
+  };
+
+  // Aplicar imagem gerada por IA a um produto
+  const handleApplyAIImage = (productId: string, imageUrl: string) => {
+    setProducts((prev) => {
+      const updated = prev.map((p) =>
+        p.id === productId
+          ? { ...p, images: [imageUrl, ...p.images.filter((img) => img !== imageUrl)] }
+          : p
+      );
+      try {
+        localStorage.setItem("nice_custom_products", JSON.stringify(updated));
+        window.dispatchEvent(new Event("storage"));
+      } catch (e) {
+        console.error("Erro ao salvar produto:", e);
+      }
+      return updated;
+    });
+  };
+
+  // Salvar pedido editado
+  const handleSaveEditedOrder = (updatedOrder: Order) => {
+    const updated = orders.map((o) => (o.id === updatedOrder.id ? updatedOrder : o));
+    saveOrders(updated);
+  };
+
+  // Salvar pedido manual e imprimir se solicitado
+  const handleSaveManualOrder = (order: Order, printImmediately: boolean) => {
+    const updated = [order, ...orders];
+    saveOrders(updated);
+    if (printImmediately) {
+      handlePrintReceipt(order);
+    }
+  };
+
+  // Controle de Horário e Botão Aberto/Fechado
+  const handleToggleManualStatus = (status: "auto" | "open" | "closed") => {
+    setStore((prev) => ({ ...prev, manual_status: status }));
+  };
+
+  // Importador em massa (Instagram text parser)
+  const handleImportText = () => {
+    if (!importText.trim()) return;
+
+    // Suporte a CSV completo e texto de lista do WhatsApp/Instagram
+    const lines = importText.split("\n").filter((l) => l.trim().length > 0);
+    const newItems: Product[] = [];
+
+    // Se a primeira linha contiver cabeçalho CSV:
+    const isCsv = lines[0].toLowerCase().includes("categoria") || lines[0].toLowerCase().includes("nome") || lines[0].includes(";");
+
+    if (isCsv) {
+      const dataLines = lines.slice(1);
+      dataLines.forEach((line, idx) => {
+        // formato: categoria,nome,preco_base,descricao,variacoes,imagem,destaque
+        const cols = line.split(",");
+        if (cols.length >= 2) {
+          const catName = cols[0]?.trim();
+          const name = cols[1]?.trim();
+          const basePrice = parseFloat(cols[2]?.replace(",", ".") || "0") || 0;
+          const desc = cols[3]?.trim() || "Produto artesanal feito sob encomenda.";
+          const variacoesStr = cols[4]?.trim() || "";
+          const badge = cols[6]?.trim() || undefined;
+
+          // Encontra categoria correspondente
+          const targetCat = categories.find((c) => c.name.toLowerCase() === catName?.toLowerCase()) || categories[0];
+
+          // Parse de variações formato Sabor:PreçoFinal;...
+          const variations: ProductVariation[] = [];
+          if (variacoesStr) {
+            const flavorPairs = variacoesStr.split(";");
+            flavorPairs.forEach((pair) => {
+              const [sabor, preco] = pair.split(":");
+              if (sabor && preco) {
+                variations.push({
+                  name: sabor.trim(),
+                  price: parseFloat(preco.replace(",", ".")),
+                });
+              }
+            });
+          }
+
+          newItems.push({
+            id: `import_csv_${Date.now()}_${idx}`,
+            category_id: targetCat?.id || "cat-doces",
+            name,
+            description: desc,
+            base_price: basePrice,
+            images: ["/logo.jpg"],
+            variations,
+            add_ons: [],
+            lead_time_hours: 0,
+            badge,
+            is_active: true,
+            is_featured: false,
+            is_sold_out: false,
+            sort_order: products.length + idx + 1,
+          });
+        }
+      });
+    } else {
+      // Parser de linhas de texto simples
+      lines.forEach((line, idx) => {
+        const parts = line.split(/[=–—:]/);
+        const name = parts[0]?.trim() || `Produto ${idx + 1}`;
+        const priceMatch = line.match(/(?:R\$\s*|=|\s)(\d+[.,]?\d*)/i);
+        const price = priceMatch ? parseFloat(priceMatch[1].replace(",", ".")) : 10.0;
+
+        newItems.push({
+          id: `import_txt_${Date.now()}_${idx}`,
+          category_id: categories[0]?.id || "cat-doces",
+          name: name,
+          description: "Produto artesanal feito com carinho pela Nice Doce Sabor.",
+          base_price: price,
+          images: ["/logo.jpg"],
+          variations: [],
+          add_ons: [],
+          lead_time_hours: 0,
+          is_active: true,
+          is_featured: false,
+          is_sold_out: false,
+          sort_order: products.length + idx + 1,
+        });
+      });
+    }
+
+    setProducts((prev) => [...prev, ...newItems]);
+    setImportSuccess(`${newItems.length} produtos importados com sucesso!`);
+    setImportText("");
+    setTimeout(() => setImportSuccess(""), 4000);
+  };
+
+  // Exportar Backup Financeiro em CSV
+  const handleExportCSV = () => {
+    const headers = "Numero,Data,Cliente,Telefone,Tipo,Total,Status,Pagamento\n";
+    const rows = orders
+      .map(
+        (o) =>
+          `#${o.order_number},"${new Date(o.created_at).toLocaleString("pt-BR")}","${o.customer_name}","${o.customer_phone}","${o.order_type}","${o.total.toFixed(2)}","${o.order_status}","${o.payment_status}"`
+      )
+      .join("\n");
+
+    const blob = new Blob([headers + rows], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `backup_financeiro_nice_doce_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Exclusão / Zerar Financeiro com Dupla Confirmação
+  const handleResetFinancials = () => {
+    if (resetConfirmWord !== "ZERAR") {
+      alert("Digite exatamente a palavra ZERAR para confirmar.");
+      return;
+    }
+    // Baixa backup antes
+    handleExportCSV();
+
+    // Zera os pedidos
+    saveOrders([]);
+    setIsResetModalOpen(false);
+    setResetConfirmWord("");
+    setResetPassword("");
+    alert("Financeiro zerado com sucesso! O backup em CSV foi baixado no seu computador.");
+  };
+
+  // Métricas financeiras
+  const totalFaturamento = orders
+    .filter((o) => o.payment_status === "paid" || o.order_status !== "cancelled")
+    .reduce((sum, o) => sum + o.total, 0);
+
+  const totalPedidos = orders.length;
+  const ticketMedio = totalPedidos > 0 ? totalFaturamento / totalPedidos : 0;
+  const pedidosCancelados = orders.filter((o) => o.order_status === "cancelled").length;
+
+  const filteredOrders = orders.filter((o) => {
+    if (orderStatusFilter === "all") return true;
+    return o.order_status === orderStatusFilter;
+  });
+
+  const storeStatus = checkStoreStatus(store);
+
+  return (
+    <AdminAuthGuard>
+      <div className="min-h-screen bg-[#FFF5FA] flex flex-col pb-16">
+      
+      {/* 1. TOPO ADMIN: STATUS EM TEMPO REAL & CONTROLE ABERTO/FECHADO */}
+      <header className="bg-white border-b border-pink-100 shadow-sm sticky top-0 z-40 px-4 py-3">
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full border-2 border-nice-pink overflow-hidden p-0.5 bg-white">
+              <Image src="/logo.jpg" alt="Logo" width={40} height={40} className="rounded-full object-cover" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="font-bold text-nice-wine text-base sm:text-lg">
+                  Painel da Dona • Nice Doce Sabor
+                </h1>
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-pink-100 text-nice-pink rounded-full">
+                  Admin
+                </span>
+              </div>
+              <p className="text-xs text-gray-500">
+                Olá, {store.owner_name} • Recife-PE
+              </p>
+            </div>
+          </div>
+
+          {/* CHAVE GRANDE DE STATUS: ABERTO / FECHADO / AUTOMÁTICO */}
+          <div className="flex items-center gap-1 bg-pink-50 p-1 rounded-2xl border border-pink-200">
+            <button
+              onClick={() => handleToggleManualStatus("open")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                store.manual_status === "open"
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "text-gray-600 hover:text-emerald-700"
+              }`}
+            >
+              Forçar Aberto
+            </button>
+            <button
+              onClick={() => handleToggleManualStatus("auto")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                store.manual_status === "auto"
+                  ? "bg-nice-pink text-white shadow-sm"
+                  : "text-gray-600 hover:text-nice-pink"
+              }`}
+            >
+              Automático (12h-19h)
+            </button>
+            <button
+              onClick={() => handleToggleManualStatus("closed")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                store.manual_status === "closed"
+                  ? "bg-rose-600 text-white shadow-sm"
+                  : "text-gray-600 hover:text-rose-700"
+              }`}
+            >
+              Forçar Fechado
+            </button>
+          </div>
+
+          {/* CONTROLE DE IMPRESSÃO AUTOMÁTICA E TESTE */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleToggleAutoPrint}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-sm ${
+                autoPrintEnabled
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+              }`}
+              title={autoPrintEnabled ? "Impressão automática ativada" : "Impressão automática desligada"}
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Impressão Auto: {autoPrintEnabled ? "LIGADA ✅" : "DESLIGADA ⏸️"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleTestPrint}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-pink-50 hover:bg-pink-100 text-nice-wine border border-pink-200 transition"
+              title="Testar impressão de comanda 58mm/80mm"
+            >
+              <span>Testar Cupom</span>
+            </button>
+          </div>
+
+          <Link
+            href="/"
+            target="_blank"
+            className="flex items-center gap-1 text-xs font-bold text-nice-pink hover:text-nice-pink-hover bg-nice-pink-light px-3 py-1.5 rounded-full transition"
+          >
+            <span>Ver Cardápio Público</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      </header>
+
+      {/* 2. ABAS DE NAVEGAÇÃO DO ADMIN */}
+      <div className="bg-white border-b border-pink-100 px-4">
+        <div className="max-w-6xl mx-auto flex items-center gap-2 overflow-x-auto py-2 scrollbar-none no-scrollbar">
+          <button
+            onClick={() => setActiveTab("pedidos")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              activeTab === "pedidos"
+                ? "bg-nice-pink text-white shadow-sm"
+                : "text-nice-wine/80 hover:bg-pink-50"
+            }`}
+          >
+            <Bell className="w-4 h-4" />
+            <span>Central de Pedidos</span>
+            {orders.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white text-nice-pink font-extrabold">
+                {orders.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab("produtos")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              activeTab === "produtos"
+                ? "bg-nice-pink text-white shadow-sm"
+                : "text-nice-wine/80 hover:bg-pink-50"
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            <span>Produtos & Importador</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("banners")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              activeTab === "banners"
+                ? "bg-nice-pink text-white shadow-sm"
+                : "text-nice-wine/80 hover:bg-pink-50"
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Banners & Promoções</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("entregas")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              activeTab === "entregas"
+                ? "bg-nice-pink text-white shadow-sm"
+                : "text-nice-wine/80 hover:bg-pink-50"
+            }`}
+          >
+            <Truck className="w-4 h-4" />
+            <span>Bairros & Fretes</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("financeiro")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              activeTab === "financeiro"
+                ? "bg-nice-pink text-white shadow-sm"
+                : "text-nice-wine/80 hover:bg-pink-50"
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            <span>Financeiro & Relatórios</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("config")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              activeTab === "config"
+                ? "bg-nice-pink text-white shadow-sm"
+                : "text-nice-wine/80 hover:bg-pink-50"
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            <span>Configurações da Loja</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 3. CONTEÚDO PRINCIPAL DAS ABAS */}
+      <main className="max-w-6xl mx-auto w-full px-4 pt-6 flex-1">
+        
+        {/* ======================================================== */}
+        {/* ABA 1: CENTRAL DE PEDIDOS EM TEMPO REAL & DISPARO WHATSAPP */}
+        {/* ======================================================== */}
+        {activeTab === "pedidos" && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold text-nice-wine">
+                  Central de Pedidos ao Vivo
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Novos pedidos aparecem aqui automaticamente com alertas e disparos de WhatsApp.
+                </p>
+              </div>
+
+              {/* Ações e Filtro por status */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setIsManualOrderOpen(true)}
+                  className="px-3.5 py-2 rounded-xl bg-nice-pink hover:bg-nice-pink-hover text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Novo Pedido Manual</span>
+                </button>
+
+                <div className="flex items-center gap-1.5 bg-white border border-pink-200 px-2.5 py-1.5 rounded-xl shadow-sm">
+                  <Filter className="w-3.5 h-3.5 text-gray-400" />
+                  <select
+                    value={orderStatusFilter}
+                    onChange={(e) => setOrderStatusFilter(e.target.value)}
+                    className="text-xs font-medium text-nice-wine bg-transparent focus:outline-none"
+                  >
+                    <option value="all">Todos os Pedidos</option>
+                    <option value="received">Recebidos</option>
+                    <option value="preparing">Em Preparo</option>
+                    <option value="ready">Prontos p/ Retirada</option>
+                    <option value="out_for_delivery">Saiu p/ Entrega</option>
+                    <option value="delivered">Finalizados</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {filteredOrders.length === 0 ? (
+              <div className="bg-white rounded-3xl p-12 text-center border border-pink-100 shadow-sm">
+                <Bell className="w-12 h-12 text-pink-200 mx-auto mb-3" />
+                <h3 className="font-bold text-nice-wine text-base">
+                  Nenhum pedido nesta categoria
+                </h3>
+                <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+                  Assim que um cliente montar e enviar um pedido pelo cardápio, ele surgirá aqui instantaneamente.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="bg-white rounded-3xl p-5 border border-pink-100 shadow-card-3d flex flex-col justify-between space-y-4 hover:border-pink-300 transition"
+                  >
+                    {/* Topo do Card: Número, Data e Status */}
+                    <div>
+                      <div className="flex items-center justify-between pb-3 border-b border-pink-50">
+                        <div>
+                          <span className="text-base font-extrabold text-nice-pink">
+                            #{order.order_number}
+                          </span>
+                          <span className="text-[10px] text-gray-400 block">
+                            {new Date(order.created_at).toLocaleTimeString("pt-BR", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-1">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              order.order_status === "received"
+                                ? "bg-amber-100 text-amber-800"
+                                : order.order_status === "ready"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-nice-pink-light text-nice-pink"
+                            }`}
+                          >
+                            {order.order_status === "received"
+                              ? "Recebido"
+                              : order.order_status === "ready"
+                              ? "Pronto"
+                              : order.order_status === "out_for_delivery"
+                              ? "Saiu Entrega"
+                              : order.order_status}
+                          </span>
+
+                          <span
+                            className={`text-[10px] font-bold ${
+                              order.payment_status === "paid"
+                                ? "text-emerald-600"
+                                : "text-amber-600"
+                            }`}
+                          >
+                            {order.payment_status === "paid" ? "✅ PAGO" : "⚠️ A COBRAR / CONFERIR"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Dados do Cliente */}
+                      <div className="py-2.5 space-y-1 text-xs">
+                        <div className="font-bold text-nice-wine">{order.customer_name}</div>
+                        <div className="text-gray-500 font-mono text-[11px]">
+                          {formatPhone(order.customer_phone)}
+                        </div>
+                        <div className="text-[11px] text-gray-500">
+                          {order.order_type === "delivery" ? "🛵 Entrega" : "🛍️ Retirada"} •{" "}
+                          <strong className="text-nice-wine uppercase">{order.payment_method}</strong>
+                        </div>
+                      </div>
+
+                      {/* Itens do Pedido */}
+                      <div className="bg-pink-50/50 p-2.5 rounded-2xl space-y-1.5 text-xs text-gray-700">
+                        {order.items?.map((it, idx) => (
+                          <div key={idx} className="leading-tight">
+                            <span className="font-bold text-nice-wine">
+                              {it.quantity}x {it.product_name}
+                            </span>
+                            {it.selected_variation && (
+                              <span className="text-[10px] text-nice-pink block">
+                                ({it.selected_variation.name})
+                              </span>
+                            )}
+                            {it.custom_notes && (
+                              <span className="text-[10px] text-gray-500 italic block">
+                                "{it.custom_notes}"
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Total */}
+                      <div className="flex justify-between items-center pt-2">
+                        <span className="text-xs text-gray-500">Valor Total:</span>
+                        <span className="text-base font-extrabold text-nice-pink">
+                          {formatCurrency(order.total)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* BOTÕES DE AÇÃO: DISPARO WHATSAPP DO CLIENTE & IMPRESSÃO */}
+                    <div className="pt-3 border-t border-pink-100 space-y-2">
+                      {/* Botão de Dar Baixa / Marcar como Pago */}
+                      {order.payment_status !== "paid" && (
+                        <button
+                          onClick={() => handleMarkAsPaid(order.id)}
+                          className="w-full py-1.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200 transition"
+                        >
+                          Conferir Comprovante e Marcar como Pago ✅
+                        </button>
+                      )}
+
+                      {/* DISPARO 1-CLIQUE: PEDIDO PRONTO / SAIU P/ ENTREGA */}
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          onClick={() => handleUpdateOrderStatus(order.id, "ready", true)}
+                          className="py-2 px-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold shadow-sm flex items-center justify-center gap-1 transition active:scale-95"
+                          title="Avisa o cliente no WhatsApp que está pronto"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5 fill-current" />
+                          <span>Pronto (Avisar)</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleUpdateOrderStatus(order.id, "out_for_delivery", true)}
+                          className="py-2 px-2.5 rounded-xl bg-nice-pink hover:bg-nice-pink-hover text-white text-[11px] font-bold shadow-sm flex items-center justify-center gap-1 transition active:scale-95"
+                          title="Avisa o cliente no WhatsApp que saiu para entrega"
+                        >
+                          <Truck className="w-3.5 h-3.5" />
+                          <span>Saiu Entrega</span>
+                        </button>
+                      </div>
+
+                      {/* Botões Editar Pedido e Imprimir Comanda Térmica */}
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          onClick={() => setEditingOrder(order)}
+                          className="py-2 px-3 rounded-xl border border-pink-200 hover:bg-pink-50 text-nice-wine text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                          title="Ajustar valor, dados ou observações"
+                        >
+                          <Edit className="w-3.5 h-3.5 text-nice-pink" />
+                          <span>Editar Pedido</span>
+                        </button>
+                        <button
+                          onClick={() => handlePrintReceipt(order)}
+                          className="py-2 px-3 rounded-xl border border-pink-200 hover:bg-pink-50 text-nice-wine text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+                        >
+                          <Printer className="w-3.5 h-3.5 text-nice-pink" />
+                          <span>{order.is_printed ? "Reimprimir" : "Imprimir"}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* ABA 2: PRODUTOS & IMPORTADOR EM MASSA DO INSTAGRAM */}
+        {/* ======================================================== */}
+        {activeTab === "produtos" && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-3xl p-6 border border-pink-100 shadow-sm space-y-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-nice-gold" />
+                <h3 className="font-bold text-nice-wine text-base">
+                  Importador Rápido de Itens do Instagram
+                </h3>
+              </div>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Cole aqui os textos e preços das postagens do Instagram da Nice Doce Sabor (um item por linha). O sistema criará os produtos no cardápio na hora!
+              </p>
+
+              <textarea
+                rows={4}
+                placeholder="Exemplo:&#10;Bolo Vulcão de Ninho com Nutella - R$ 65,00&#10;Caixa de Brigadeiros Gourmet 12 un - R$ 36,00&#10;Empada Doce de Leite Condensado - R$ 8,00"
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                className="w-full p-3 text-xs sm:text-sm border border-pink-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-nice-pink/40"
+              />
+
+              {importSuccess && (
+                <div className="p-3 bg-emerald-50 text-emerald-800 text-xs font-bold rounded-xl border border-emerald-200">
+                  {importSuccess}
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  onClick={handleImportText}
+                  className="px-5 py-2.5 rounded-full bg-nice-pink hover:bg-nice-pink-hover text-white text-xs font-bold shadow-md transition"
+                >
+                  Importar Linhas para o Cardápio
+                </button>
+              </div>
+            </div>
+
+            {/* Listagem de Produtos Cadastrados com Ações de Criação e IA */}
+            <div className="bg-white rounded-3xl p-6 border border-pink-100 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-nice-wine text-base sm:text-lg">
+                    Produtos no Cardápio ({products.length} itens)
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    Gerencie fotos, preços e sabores de cada item da Nice Doce Sabor
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setEditingProduct(null);
+                      setIsProductFormOpen(true);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-nice-pink hover:bg-nice-pink-hover text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Cadastrar Produto</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsAIStudioOpen(true)}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-nice-pink to-amber-500 hover:opacity-90 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition active:scale-95"
+                  >
+                    <Wand2 className="w-4 h-4" />
+                    <span>✨ Estúdio de Imagens IA</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {products.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between p-3 rounded-2xl border border-pink-100 bg-[#FFFDFE] hover:border-pink-200 transition text-xs"
+                  >
+                    <div className="flex items-center gap-3 min-w-0 pr-2">
+                      <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-pink-50 flex-shrink-0 border border-pink-100">
+                        <Image src={p.images[0] || "/logo.jpg"} alt={p.name} fill className="object-cover" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-nice-wine text-sm truncate">{p.name}</span>
+                          {p.badge && (
+                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-100 text-nice-pink">
+                              {p.badge}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-gray-500 text-[11px] block truncate">{p.description}</span>
+                        {p.variations && p.variations.length > 0 && (
+                          <span className="inline-block text-[10px] text-nice-pink font-semibold bg-nice-pink-light px-2 py-0.5 rounded-md mt-0.5">
+                            {p.variations.length} sabores cadastrados
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="font-extrabold text-nice-pink text-sm sm:text-base mr-1">
+                        {formatCurrency(p.base_price)}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setEditingProduct(p);
+                          setIsProductFormOpen(true);
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-nice-pink hover:bg-pink-50 rounded-lg transition"
+                        title="Editar produto"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProduct(p.id)}
+                        className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition"
+                        title="Excluir produto"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* ABA BANNERS: CARROSSEL DE ANÚNCIOS E PROMOÇÕES DA LOJA */}
+        {/* ======================================================== */}
+        {activeTab === "banners" && (
+          <PromoBannersManager
+            banners={banners}
+            onSaveBanners={handleSaveBanners}
+            categories={categories}
+          />
+        )}
+
+        {/* ======================================================== */}
+        {/* ABA 3: ENTREGAS, BAIRROS E FRETES */}
+        {/* ======================================================== */}
+        {activeTab === "entregas" && (
+          <DeliveryManagerTab
+            store={store}
+            onUpdateDeliveryEnabled={handleUpdateDeliveryEnabled}
+            neighborhoods={neighborhoods}
+            onSaveNeighborhoods={handleSaveNeighborhoods}
+          />
+        )}
+
+        {/* ======================================================== */}
+        {/* ABA 4: FINANCEIRO COMPLETO, DASHBOARD E DUPLA CONFIRMAÇÃO */}
+        {/* ======================================================== */}
+        {activeTab === "financeiro" && (
+          <div className="space-y-6">
+            {/* Cards de Métricas */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-white p-4 rounded-3xl border border-pink-100 shadow-sm">
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide block">
+                  Faturamento Total
+                </span>
+                <span className="text-lg sm:text-2xl font-extrabold text-nice-pink mt-1 block">
+                  {formatCurrency(totalFaturamento)}
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-3xl border border-pink-100 shadow-sm">
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide block">
+                  Total de Pedidos
+                </span>
+                <span className="text-lg sm:text-2xl font-extrabold text-nice-wine mt-1 block">
+                  {totalPedidos}
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-3xl border border-pink-100 shadow-sm">
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide block">
+                  Ticket Médio
+                </span>
+                <span className="text-lg sm:text-2xl font-extrabold text-nice-wine mt-1 block">
+                  {formatCurrency(ticketMedio)}
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-3xl border border-pink-100 shadow-sm">
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide block">
+                  Cancelados
+                </span>
+                <span className="text-lg sm:text-2xl font-extrabold text-rose-600 mt-1 block">
+                  {pedidosCancelados}
+                </span>
+              </div>
+            </div>
+
+            {/* Ações de Relatório e Backup */}
+            <div className="bg-white rounded-3xl p-6 border border-pink-100 shadow-sm flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h3 className="font-bold text-nice-wine text-base">
+                  Exportação de Dados Financeiros
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Baixe a planilha completa de pedidos em formato CSV para conferência.
+                </p>
+              </div>
+
+              <button
+                onClick={handleExportCSV}
+                className="px-5 py-2.5 rounded-full bg-nice-wine hover:bg-nice-wine-dark text-white text-xs font-bold shadow-sm flex items-center gap-2 transition"
+              >
+                <Download className="w-4 h-4" />
+                <span>Baixar Relatório em Planilha (CSV)</span>
+              </button>
+            </div>
+
+            {/* ZONA DE PERIGO: ZERAR FINANCEIRO COM DUPLA CONFIRMAÇÃO */}
+            <div className="bg-rose-50/60 rounded-3xl p-6 border-2 border-rose-200 space-y-3">
+              <div className="flex items-center gap-2 text-rose-700">
+                <ShieldAlert className="w-5 h-5" />
+                <h4 className="font-bold text-sm">Controle Total: Limpar ou Zerar Financeiro</h4>
+              </div>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                A dona tem total liberdade para reiniciar os dados caso deseje. Ao zerar, um arquivo de backup em CSV é baixado automaticamente no seu computador antes de apagar.
+              </p>
+
+              <button
+                onClick={() => setIsResetModalOpen(true)}
+                className="px-5 py-2 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm transition"
+              >
+                Zerar Dados Financeiros
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* ABA 5: CONFIGURAÇÕES GERAIS DA LOJA (WHITE-LABEL / PIX) */}
+        {/* ======================================================== */}
+        {activeTab === "config" && (
+          <StoreSettingsTab
+            store={store}
+            onSaveStore={handleSaveStore}
+          />
+        )}
+      </main>
+
+      {/* MODAL DE DUPLA CONFIRMAÇÃO PARA ZERAR */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border-2 border-rose-200">
+            <div className="flex items-center gap-2 text-rose-600">
+              <ShieldAlert className="w-6 h-6" />
+              <h3 className="font-bold text-base text-nice-wine">Confirmação de Segurança</h3>
+            </div>
+            <p className="text-xs text-gray-600 leading-relaxed">
+              Esta ação apagará os pedidos salvos no sistema. Um backup em CSV será baixado no seu dispositivo antes de apagar.
+            </p>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-700 block">
+                Digite a palavra <span className="text-rose-600 font-extrabold">ZERAR</span> para confirmar:
+              </label>
+              <input
+                type="text"
+                value={resetConfirmWord}
+                onChange={(e) => setResetConfirmWord(e.target.value)}
+                placeholder="ZERAR"
+                className="w-full p-2.5 border border-rose-300 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-rose-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setIsResetModalOpen(false)}
+                className="px-4 py-2 rounded-full border border-gray-300 text-xs font-semibold text-gray-600"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleResetFinancials}
+                className="px-5 py-2 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md"
+              >
+                Confirmar e Zerar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RECEPTÁCULO PARA IMPRESSÃO TÉRMICA (58mm / 80mm) */}
+      {printingOrder && (
+        <div id="thermal-receipt" className="hidden print:block font-mono text-[11px] leading-tight text-black">
+          <div className="text-center font-bold text-sm mb-1">*** NICE DOCE SABOR ***</div>
+          <div className="text-center text-[10px] mb-2">Confeitaria Artesanal - Recife/PE</div>
+          <div className="border-b border-black pb-1 mb-2">
+            <div>PEDIDO: #{printingOrder.order_number}</div>
+            <div>DATA: {new Date(printingOrder.created_at).toLocaleString("pt-BR")}</div>
+            <div>CLIENTE: {printingOrder.customer_name}</div>
+            <div>FONE: {formatPhone(printingOrder.customer_phone)}</div>
+            <div>TIPO: {printingOrder.order_type === "delivery" ? "ENTREGA" : "RETIRADA"}</div>
+          </div>
+
+          <div className="border-b border-black pb-1 mb-2">
+            <div className="font-bold mb-1">ITENS:</div>
+            {printingOrder.items?.map((it, i) => (
+              <div key={i} className="mb-1">
+                <div>{it.quantity}x {it.product_name} - {formatCurrency(it.total_price)}</div>
+                {it.selected_variation && <div className="text-[9px]">  Tam: {it.selected_variation.name}</div>}
+                {it.custom_notes && <div className="text-[9px]">  Obs: "{it.custom_notes}"</div>}
+              </div>
+            ))}
+          </div>
+
+          <div className="text-right font-bold text-xs mb-2">
+            TOTAL: {formatCurrency(printingOrder.total)}
+          </div>
+          <div className="border-b border-black pb-1 mb-2">
+            PAGAMENTO: {printingOrder.payment_method.toUpperCase()}
+            <div>STATUS PGTO: {printingOrder.payment_status === "paid" ? "PAGO [OK]" : "A COBRAR"}</div>
+          </div>
+
+          <div className="text-center text-[10px] mt-2">
+            Obrigado pela preferência! Feito com amor.
+          </div>
+        </div>
+      )}
+      {/* MODAL DE CADASTRO / EDIÇÃO DE PRODUTO */}
+      <ProductFormModal
+        isOpen={isProductFormOpen}
+        onClose={() => {
+          setIsProductFormOpen(false);
+          setEditingProduct(null);
+        }}
+        onSave={handleSaveProduct}
+        categories={categories}
+        initialProduct={editingProduct}
+      />
+
+      {/* MODAL DO ESTÚDIO DE IMAGENS IA */}
+      <AIImageStudioModal
+        isOpen={isAIStudioOpen}
+        onClose={() => setIsAIStudioOpen(false)}
+        products={products}
+        onApplyImageToProduct={handleApplyAIImage}
+      />
+
+      {/* MODAL DE PEDIDO MANUAL */}
+      <ManualOrderModal
+        isOpen={isManualOrderOpen}
+        onClose={() => setIsManualOrderOpen(false)}
+        products={products}
+        onSaveOrder={handleSaveManualOrder}
+      />
+
+      {/* MODAL DE EDIÇÃO DE PEDIDO EXISTENTE */}
+      <EditOrderModal
+        isOpen={Boolean(editingOrder)}
+        onClose={() => setEditingOrder(null)}
+        order={editingOrder}
+        onSaveOrder={handleSaveEditedOrder}
+      />
+
+      {/* NOTIFICAÇÃO FLUTUANTE DE IMPRESSÃO AUTOMÁTICA */}
+      {autoPrintToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 border border-emerald-400 animate-bounce">
+          <Printer className="w-5 h-5 flex-shrink-0 animate-pulse" />
+          <span className="font-bold text-sm">{autoPrintToast}</span>
+        </div>
+      )}
+      </div>
+    </AdminAuthGuard>
+  );
+}
