@@ -763,14 +763,26 @@ export default function AdminPage() {
             </button>
           </div>
 
-          <Link
-            href="/"
-            target="_blank"
-            className="flex items-center gap-1 text-xs font-bold text-nice-pink hover:text-nice-pink-hover bg-nice-pink-light px-3 py-1.5 rounded-full transition"
-          >
-            <span>Ver Cardápio Público</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/admin/cardapio-fag-impressao"
+              target="_blank"
+              className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-nice-pink via-rose-500 to-amber-500 hover:opacity-95 px-3.5 py-1.5 rounded-full shadow-sm hover:shadow transition transform active:scale-95"
+              title="Gerar e Descarregar Cardápio Físico em PDF (A4) e Plaquinhas de Mesa"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Cardápio em PDF & Plaquinhas</span>
+            </Link>
+
+            <Link
+              href="/"
+              target="_blank"
+              className="flex items-center gap-1 text-xs font-bold text-nice-pink hover:text-nice-pink-hover bg-nice-pink-light px-3 py-1.5 rounded-full transition"
+            >
+              <span>Ver Cardápio Público</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -1119,6 +1131,16 @@ export default function AdminPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <Link
+                    href="/admin/cardapio-fag-impressao"
+                    target="_blank"
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-50 to-pink-50 hover:bg-amber-100 text-nice-wine border border-pink-200 text-xs font-bold shadow-sm flex items-center gap-1.5 transition active:scale-95"
+                    title="Imprimir Cardápio de Balcão e Plaquinhas A4"
+                  >
+                    <Printer className="w-4 h-4 text-nice-pink" />
+                    <span>Cardápio Físico em PDF (A4)</span>
+                  </Link>
+
                   <button
                     onClick={() => {
                       setEditingProduct(null);
