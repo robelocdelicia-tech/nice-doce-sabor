@@ -171,3 +171,29 @@ button, a, input, select, textarea {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
 }
 
+/* ========================================================================= */
+/* ESCONDER SELO / BADGE / DRAWER DA NETLIFY                                  */
+/* ========================================================================= */
+[data-netlify-badge],
+iframe[src*="netlify"],
+iframe[id*="netlify"],
+.netlify-badge,
+#netlify-badge,
+div[class*="netlify"],
+div[id*="netlify"],
+div[data-netlify-deploy-id],
+a[href*="netlify.com"],
+netlify-drawer,
+#netlify-drawer,
+.netlify-feedback-badge {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  position: absolute !important;
+  z-index: -9999 !important;
+}
+
