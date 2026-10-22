@@ -282,22 +282,31 @@ export default function AdminPage() {
     const savedCoupons = localStorage.getItem("nice_custom_coupons");
     if (savedCoupons) {
       try {
-        setCoupons(JSON.parse(savedCoupons));
+        const parsed = JSON.parse(savedCoupons);
+        if (Array.isArray(parsed)) {
+          setCoupons(parsed);
+          // Envia cupons locais ao servidor para garantir sincronização
+          fetch("/api/coupons", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ coupons: parsed }),
+          }).catch(() => {});
+        }
       } catch (e) {
         console.error("Erro ao carregar cupons locais:", e);
       }
+    } else {
+      // Primeira carga: busca do servidor e inicializa localStorage
+      fetch("/api/coupons")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && Array.isArray(data.coupons)) {
+            setCoupons(data.coupons);
+            localStorage.setItem("nice_custom_coupons", JSON.stringify(data.coupons));
+          }
+        })
+        .catch(() => {});
     }
-
-    // Sincroniza com a API do servidor
-    fetch("/api/coupons")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && Array.isArray(data.coupons)) {
-          setCoupons(data.coupons);
-          localStorage.setItem("nice_custom_coupons", JSON.stringify(data.coupons));
-        }
-      })
-      .catch((err) => console.warn("Aviso ao carregar cupons do servidor:", err));
 
     loadOrders(false); // Carga inicial sem imprimir anteriores
 

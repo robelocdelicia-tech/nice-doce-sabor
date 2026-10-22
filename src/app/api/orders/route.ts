@@ -7,6 +7,7 @@ import {
   calculateCouponDiscount,
   normalizeCoupon,
   saveServerCoupons,
+  isCouponDeleted,
 } from "@/lib/serverCoupons";
 
 // Memória local em runtime para fallback caso o Supabase não esteja conectado
@@ -156,7 +157,7 @@ export async function POST(request: NextRequest) {
     const cleanCouponCode = orderData.coupon_code?.trim().toUpperCase();
 
     // 3. VALIDAÇÃO E RECÁLCULO DO CUPOM NO SERVIDOR (NUNCA CONFIAR NO CLIENTE)
-    if (cleanCouponCode) {
+    if (cleanCouponCode && !isCouponDeleted(cleanCouponCode)) {
       let coupon: Coupon | null = null;
       const allCoupons = await getServerCoupons();
       coupon = allCoupons.find((c) => c.code.toUpperCase() === cleanCouponCode) || null;

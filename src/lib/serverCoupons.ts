@@ -1,15 +1,22 @@
+import os from "os";
 import fs from "fs";
 import path from "path";
 import { Coupon } from "@/types";
 import { DEFAULT_COUPONS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
 
-// Caminho de fallback para persistência local dos cupons no servidor
-const CACHE_FILE_PATH = path.join(process.cwd(), ".next", "nice_custom_coupons.json");
-const DELETED_CODES_PATH = path.join(process.cwd(), ".next", "nice_deleted_coupons.json");
+// Caminho de persistência no diretório temporário do SO (funciona em Netlify, Vercel, Docker e Windows)
+const CACHE_FILE_PATH = path.join(os.tmpdir(), "nice_custom_coupons.json");
+const DELETED_CODES_PATH = path.join(os.tmpdir(), "nice_deleted_coupons.json");
 
 // Memória em runtime
 let memoryCoupons: Coupon[] = [...DEFAULT_COUPONS];
+
+export function isCouponDeleted(code: string): boolean {
+  if (!code) return false;
+  const deleted = loadDeletedCodes();
+  return deleted.has(code.trim().toUpperCase());
+}
 
 function loadDeletedCodes(): Set<string> {
   try {
@@ -40,13 +47,11 @@ function loadFromDisk(): Coupon[] {
     if (fs.existsSync(CACHE_FILE_PATH)) {
       const content = fs.readFileSync(CACHE_FILE_PATH, "utf-8");
       const parsed = JSON.parse(content);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
-  } catch (err) {
-    // Falha silenciosa em ambientes somente-leitura
-  }
+  } catch (err) {}
   return memoryCoupons;
 }
 
@@ -148,63 +153,64 @@ export function normalizeCoupon(c: any): Coupon {
 // Carrega todos os cupons (Supabase + Disco/Memória + Defaults ignorando deletados)
 export async function getServerCoupons(): Promise<Coupon[]> {
   const deletedCodes = loadDeletedCodes();
-  let list = loadFromDisk();
 
-  const codeMap = new Map<string, Coupon>();
+  // 1. Se já temos arquivo salvo em disco explicitamente, usamos a lista atual (mesmo que vazia [])
+  if (fs.existsSync(CACHE_FILE_PATH)) {
+    const list = loadFromDisk();
+    const activeList = list
+      .filter((c) => !deletedCodes.has(c.code.trim().toUpperCase()))
+      .map(normalizeCoupon);
+    memoryCoupons = activeList;
+    return activeList;
+  }
 
-  // Injeta cupons padrão que não foram explicitamente deletados
-  DEFAULT_COUPONS.forEach((dc) => {
-    const code = dc.code.trim().toUpperCase();
-    if (!deletedCodes.has(code)) {
-      codeMap.set(code, normalizeCoupon(dc));
-    }
-  });
-
-  // Injeta cupons salvos em disco/memória
-  list.forEach((c) => {
-    const code = c.code.trim().toUpperCase();
-    if (!deletedCodes.has(code)) {
-      codeMap.set(code, normalizeCoupon(c));
-    }
-  });
-
+  // 2. Tenta carregar do Supabase se disponível
   try {
     const supabase = createClient();
     if (supabase) {
-      const { data: dbCoupons, error } = await supabase
-        .from("coupons")
-        .select("*");
-
+      const { data: dbCoupons, error } = await supabase.from("coupons").select("*");
       if (!error && dbCoupons && dbCoupons.length > 0) {
-        dbCoupons.forEach((dbc) => {
-          const code = dbc.code?.trim().toUpperCase();
-          if (code && !deletedCodes.has(code)) {
-            codeMap.set(code, normalizeCoupon(dbc));
-          }
-        });
+        const activeList = dbCoupons
+          .filter((dbc) => !deletedCodes.has(dbc.code?.trim().toUpperCase()))
+          .map(normalizeCoupon);
+        memoryCoupons = activeList;
+        saveToDisk(activeList);
+        return activeList;
       }
     }
   } catch (err) {}
 
-  const result = Array.from(codeMap.values());
-  memoryCoupons = result;
-  return result;
+  // 3. Fallback inicial nos cupons padrão ignorando os que foram deletados
+  const initial = DEFAULT_COUPONS
+    .filter((dc) => !deletedCodes.has(dc.code.trim().toUpperCase()))
+    .map(normalizeCoupon);
+
+  memoryCoupons = initial;
+  saveToDisk(initial);
+  return initial;
 }
 
 // Salva e atualiza cupons no servidor
 export async function saveServerCoupons(coupons: Coupon[]): Promise<Coupon[]> {
   const normalized = coupons.map(normalizeCoupon);
+  const previousMemory = memoryCoupons;
   memoryCoupons = normalized;
   saveToDisk(normalized);
 
   const currentCodes = new Set(normalized.map((c) => c.code.trim().toUpperCase()));
 
-  // Se algum cupom padrão foi removido da lista, registra como deletado
+  // Se algum cupom padrão ou que estava salvo anteriormente foi removido da lista, registra como deletado
   const deletedCodes = loadDeletedCodes();
   DEFAULT_COUPONS.forEach((dc) => {
     const cCode = dc.code.trim().toUpperCase();
     if (!currentCodes.has(cCode)) {
       deletedCodes.add(cCode);
+    }
+  });
+  previousMemory.forEach((pm) => {
+    const pCode = pm.code.trim().toUpperCase();
+    if (!currentCodes.has(pCode)) {
+      deletedCodes.add(pCode);
     }
   });
   saveDeletedCodes(deletedCodes);

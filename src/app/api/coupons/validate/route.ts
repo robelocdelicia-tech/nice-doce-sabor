@@ -6,6 +6,7 @@ import {
   getServerCoupons,
   calculateCouponDiscount,
   normalizeCoupon,
+  isCouponDeleted,
   ValidationItem,
 } from "@/lib/serverCoupons";
 
@@ -35,6 +36,17 @@ export async function POST(request: NextRequest) {
     }
 
     const cleanCode = code.trim().toUpperCase();
+
+    // Se o cupom foi expressamente excluído pela dona da loja, recusa imediatamente
+    if (isCouponDeleted(cleanCode)) {
+      return NextResponse.json({
+        valid: false,
+        discount: 0,
+        discount_amount: 0,
+        message: "Este cupom foi desativado ou não existe mais.",
+      });
+    }
+
     let coupon: Coupon | null = null;
     let customerUsageCount = 0;
 

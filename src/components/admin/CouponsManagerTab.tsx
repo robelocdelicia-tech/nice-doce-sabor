@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Coupon, Order, Category, Product } from "@/types";
 import { formatCurrency, formatPhone } from "@/lib/utils";
 import {
@@ -42,6 +42,12 @@ export function CouponsManagerTab({
   products,
   storeDomain = typeof window !== "undefined" ? window.location.origin : "https://nicedocesabor.com",
 }: CouponsManagerTabProps) {
+  const [localCoupons, setLocalCoupons] = useState<Coupon[]>(coupons);
+
+  useEffect(() => {
+    setLocalCoupons(coupons);
+  }, [coupons]);
+
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
   const [isSendWhatsAppOpen, setIsSendWhatsAppOpen] = useState(false);
@@ -77,7 +83,7 @@ export function CouponsManagerTab({
   const couponStats = useMemo(() => {
     const stats: Record<string, { uses: number; totalDiscount: number; totalRevenue: number }> = {};
 
-    coupons.forEach((c) => {
+    localCoupons.forEach((c) => {
       stats[c.code] = { uses: 0, totalDiscount: 0, totalRevenue: 0 };
     });
 
@@ -94,7 +100,7 @@ export function CouponsManagerTab({
     });
 
     return stats;
-  }, [coupons, orders]);
+  }, [localCoupons, orders]);
 
   // Extrai lista única de clientes dos pedidos reais para envio
   const customerList = useMemo(() => {
@@ -200,13 +206,14 @@ export function CouponsManagerTab({
     e.preventDefault();
     setFormError("");
 
-    const cleanCode = code.trim().toUpperCase();
+    const cleanCode = code.replace(/\s+/g, "").toUpperCase();
     if (!cleanCode) {
       setFormError("Informe o código do cupom (ex: NICE10).");
       return;
     }
 
-    const numVal = parseFloat(discountValue);
+    const cleanDiscount = discountValue.replace(",", ".");
+    const numVal = parseFloat(cleanDiscount);
     if (isNaN(numVal) || numVal <= 0) {
       setFormError("Informe um valor de desconto válido maior que zero.");
       return;
@@ -222,8 +229,13 @@ export function CouponsManagerTab({
       return;
     }
 
+    if (scope === "product" && scopeProductIds.length === 0) {
+      setFormError("Por favor, selecione ao menos um produto para este cupom.");
+      return;
+    }
+
     // Verifica se já existe outro cupom com o mesmo código
-    const isDuplicate = coupons.some(
+    const isDuplicate = localCoupons.some(
       (c) => c.code.trim().toUpperCase() === cleanCode && c.id !== editingCoupon?.id
     );
     if (isDuplicate) {
@@ -239,7 +251,7 @@ export function CouponsManagerTab({
         : [];
 
     const newCoupon: Coupon = {
-      id: editingCoupon ? editingCoupon.id : (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `coupon_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`),
+      id: editingCoupon?.id || `coupon_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       code: cleanCode,
       name: name.trim() || cleanCode,
       discount_type: discountType,
@@ -248,9 +260,9 @@ export function CouponsManagerTab({
       scope_category_id: scopeCategoryId || undefined,
       scope_product_ids: scopeProductIds.length > 0 ? scopeProductIds : undefined,
       target_ids: targetIds,
-      min_order_value: minOrderValue ? parseFloat(minOrderValue) : undefined,
-      max_discount_value: maxDiscountValue ? parseFloat(maxDiscountValue) : undefined,
-      max_discount_cap: maxDiscountValue ? parseFloat(maxDiscountValue) : undefined,
+      min_order_value: minOrderValue ? parseFloat(minOrderValue.replace(",", ".")) : undefined,
+      max_discount_value: maxDiscountValue ? parseFloat(maxDiscountValue.replace(",", ".")) : undefined,
+      max_discount_cap: maxDiscountValue ? parseFloat(maxDiscountValue.replace(",", ".")) : undefined,
       start_date: startDate ? `${startDate}T00:00:00` : undefined,
       end_date: endDate ? `${endDate}T23:59:59` : undefined,
       usage_limit_total: usageLimitTotal ? parseInt(usageLimitTotal) : undefined,
@@ -272,12 +284,13 @@ export function CouponsManagerTab({
 
     let updated: Coupon[];
     if (editingCoupon) {
-      updated = coupons.map((c) => (c.id === editingCoupon.id ? newCoupon : c));
+      updated = localCoupons.map((c) => (c.id === editingCoupon.id ? newCoupon : c));
     } else {
-      const filtered = coupons.filter((c) => c.code.trim().toUpperCase() !== cleanCode);
+      const filtered = localCoupons.filter((c) => c.code.trim().toUpperCase() !== cleanCode);
       updated = [newCoupon, ...filtered];
     }
 
+    setLocalCoupons(updated);
     onSaveCoupons(updated);
     setIsFormOpen(false);
     setToastMessage(editingCoupon ? `Cupom ${cleanCode} atualizado com sucesso!` : `Cupom ${cleanCode} cadastrado com sucesso!`);
@@ -292,10 +305,11 @@ export function CouponsManagerTab({
     if (!deleteModalCoupon) return;
     const target = deleteModalCoupon;
     const cleanCode = target.code.trim().toUpperCase();
-    const updated = coupons.filter(
+    const updated = localCoupons.filter(
       (c) => c.id !== target.id && c.code.trim().toUpperCase() !== cleanCode
     );
 
+    setLocalCoupons(updated);
     onSaveCoupons(updated);
 
     fetch(`/api/coupons?id=${encodeURIComponent(target.id)}&code=${encodeURIComponent(cleanCode)}`, {
@@ -308,9 +322,10 @@ export function CouponsManagerTab({
   };
 
   const handleToggleActive = (id: string) => {
-    const updated = coupons.map((c) =>
+    const updated = localCoupons.map((c) =>
       c.id === id ? { ...c, is_active: !c.is_active } : c
     );
+    setLocalCoupons(updated);
     onSaveCoupons(updated);
   };
 
@@ -379,61 +394,86 @@ export function CouponsManagerTab({
       </div>
 
       {/* Lista de Cupons */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {coupons.map((coupon) => {
-          const stats = couponStats[coupon.code] || { uses: 0, totalDiscount: 0, totalRevenue: 0 };
-          const directLink = `${storeDomain}/?cupom=${coupon.code}`;
+      {localCoupons.length === 0 ? (
+        <div className="bg-white rounded-3xl p-10 border border-pink-100 text-center shadow-card-3d max-w-lg mx-auto space-y-4">
+          <div className="w-16 h-16 rounded-full bg-pink-50 text-nice-pink flex items-center justify-center mx-auto border border-pink-100">
+            <Tag className="w-8 h-8" />
+          </div>
+          <div>
+            <h4 className="font-extrabold text-nice-wine text-base sm:text-lg">
+              Nenhum cupom cadastrado
+            </h4>
+            <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+              Crie seu primeiro cupom de desconto promocional para atrair novos clientes ou fidelizar quem já compra na Nice Doce Sabor.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleOpenForm()}
+            className="px-5 py-2.5 rounded-full bg-nice-pink hover:bg-nice-pink-hover text-white text-xs font-bold shadow-md inline-flex items-center gap-2 transition active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Cadastrar Primeiro Cupom</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {localCoupons.map((coupon) => {
+            const stats = couponStats[coupon.code] || { uses: 0, totalDiscount: 0, totalRevenue: 0 };
+            const directLink = `${storeDomain}/?cupom=${coupon.code}`;
 
-          return (
-            <div
-              key={coupon.id}
-              className={`bg-white rounded-3xl p-5 border transition-all duration-300 flex flex-col justify-between shadow-card-3d ${
-                coupon.is_active
-                  ? "border-pink-100 hover:border-pink-300"
-                  : "border-gray-200 opacity-60 bg-gray-50/70"
-              }`}
-            >
-              <div>
-                {/* Cabeçalho do Card */}
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-extrabold text-sm sm:text-base px-3 py-1 rounded-xl bg-nice-wine text-nice-gold border border-pink-200 tracking-wider">
-                      {coupon.code}
-                    </span>
-                    {coupon.show_on_menu && (
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-pink-100 text-nice-pink">
-                        Exibido no Menu
+            return (
+              <div
+                key={coupon.id}
+                className={`bg-white rounded-3xl p-5 border transition-all duration-300 flex flex-col justify-between shadow-card-3d ${
+                  coupon.is_active
+                    ? "border-pink-100 hover:border-pink-300"
+                    : "border-gray-200 opacity-60 bg-gray-50/70"
+                }`}
+              >
+                <div>
+                  {/* Cabeçalho do Card */}
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-extrabold text-sm sm:text-base px-3 py-1 rounded-xl bg-nice-wine text-nice-gold border border-pink-200 tracking-wider">
+                        {coupon.code}
                       </span>
-                    )}
+                      {coupon.show_on_menu && (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-pink-100 text-nice-pink">
+                          Exibido no Menu
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => handleToggleActive(coupon.id)}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition ${
+                        coupon.is_active
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-gray-200 text-gray-700"
+                      }`}
+                    >
+                      {coupon.is_active ? "Ativo" : "Pausado"}
+                    </button>
                   </div>
 
-                  <button
-                    onClick={() => handleToggleActive(coupon.id)}
-                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition ${
-                      coupon.is_active
-                        ? "bg-emerald-100 text-emerald-800"
-                        : "bg-gray-200 text-gray-700"
-                    }`}
-                  >
-                    {coupon.is_active ? "Ativo" : "Pausado"}
-                  </button>
-                </div>
-
-                <h4 className="font-bold text-nice-wine text-sm mb-1">{coupon.name}</h4>
-                <div className="flex items-baseline gap-1 text-nice-pink font-extrabold text-lg mb-2">
-                  <span>
-                    {coupon.discount_type === "percentage"
-                      ? `${coupon.discount_value}% OFF`
-                      : `${formatCurrency(coupon.discount_value)} OFF`}
-                  </span>
-                  <span className="text-[11px] font-normal text-gray-500">
-                    {coupon.scope === "delivery"
-                      ? "no frete"
-                      : coupon.scope === "category"
-                      ? "na categoria"
-                      : "no pedido"}
-                  </span>
-                </div>
+                  <h4 className="font-bold text-nice-wine text-sm mb-1">{coupon.name}</h4>
+                  <div className="flex items-baseline gap-1 text-nice-pink font-extrabold text-lg mb-2">
+                    <span>
+                      {coupon.discount_type === "percentage"
+                        ? `${coupon.discount_value}% OFF`
+                        : `${formatCurrency(coupon.discount_value)} OFF`}
+                    </span>
+                    <span className="text-[11px] font-normal text-gray-500">
+                      {coupon.scope === "delivery"
+                        ? "no frete"
+                        : coupon.scope === "category"
+                        ? "na categoria"
+                        : coupon.scope === "product" || coupon.scope === "products"
+                        ? "em produtos específicos"
+                        : "no pedido"}
+                    </span>
+                  </div>
 
                 {/* Regras Compactas */}
                 <div className="space-y-1 text-[11px] text-gray-500 bg-pink-50/50 p-2.5 rounded-xl border border-pink-100/60 mb-3">
@@ -528,6 +568,7 @@ export function CouponsManagerTab({
           );
         })}
       </div>
+      )}
 
       {/* MODAL 1: CADASTRO / EDIÇÃO DE CUPOM */}
       {isFormOpen && (
@@ -628,6 +669,7 @@ export function CouponsManagerTab({
                 >
                   <option value="all">Pedido Inteiro (Subtotal)</option>
                   <option value="category">Em uma Categoria Específica</option>
+                  <option value="product">Em Produtos Específicos</option>
                   <option value="delivery">Apenas na Taxa de Entrega / Frete</option>
                 </select>
               </div>
@@ -635,7 +677,7 @@ export function CouponsManagerTab({
               {scope === "category" && (
                 <div className="space-y-1">
                   <label className="font-bold uppercase tracking-wider text-nice-wine">
-                    Selecione a Categoria
+                    Selecione a Categoria *
                   </label>
                   <select
                     value={scopeCategoryId}
@@ -649,6 +691,53 @@ export function CouponsManagerTab({
                       </option>
                     ))}
                   </select>
+                </div>
+              )}
+
+              {scope === "product" && (
+                <div className="space-y-1.5">
+                  <label className="font-bold uppercase tracking-wider text-nice-wine flex items-center justify-between">
+                    <span>Selecione os Produtos com Desconto *</span>
+                    <span className="text-[10px] text-nice-pink font-semibold">
+                      {scopeProductIds.length} selecionado(s)
+                    </span>
+                  </label>
+                  <div className="max-h-48 overflow-y-auto p-2 rounded-2xl border border-pink-200 bg-pink-50/20 space-y-1.5">
+                    {products.length === 0 ? (
+                      <p className="text-gray-400 text-xs p-2 text-center">Nenhum produto cadastrado</p>
+                    ) : (
+                      products.map((p) => {
+                        const isSelected = scopeProductIds.includes(p.id);
+                        return (
+                          <label
+                            key={p.id}
+                            className={`flex items-center gap-2.5 p-2 rounded-xl text-xs cursor-pointer transition select-none ${
+                              isSelected
+                                ? "bg-pink-100 text-nice-wine font-bold border border-pink-300"
+                                : "hover:bg-white text-gray-700 bg-white/60 border border-transparent"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setScopeProductIds((prev) => [...prev, p.id]);
+                                } else {
+                                  setScopeProductIds((prev) => prev.filter((id) => id !== p.id));
+                                }
+                              }}
+                              className="w-4 h-4 rounded text-nice-pink focus:ring-nice-pink accent-nice-pink"
+                            />
+                            <span className="flex-1 truncate">{p.name}</span>
+                            <span className="text-[10px] text-gray-400 font-mono">
+                              {formatCurrency(p.base_price)}
+                            </span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               )}
 
