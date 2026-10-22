@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { Order, Store } from "@/types";
 import { DEFAULT_STORE } from "@/lib/constants";
 import { formatCurrency, formatPhone, generateStoreWhatsAppUrl } from "@/lib/utils";
+import { printThermalReceipt } from "@/lib/thermalPrinter";
 import { generatePixCopiaECola } from "@/lib/pix";
 import {
   CheckCircle2,
@@ -82,7 +83,11 @@ export default function OrderTrackingPage() {
   };
 
   const handlePrint = () => {
-    window.print();
+    if (order) {
+      printThermalReceipt(order, store);
+    } else {
+      window.print();
+    }
   };
 
   if (!order) {

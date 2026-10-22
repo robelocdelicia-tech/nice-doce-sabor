@@ -28,6 +28,7 @@ import {
   generateCustomerStatusWhatsAppUrl,
 } from "@/lib/utils";
 import { calculateBestSellers, BestSellerItem } from "@/lib/bestSellers";
+import { printThermalReceipt } from "@/lib/thermalPrinter";
 import {
   Bell,
   Clock,
@@ -520,17 +521,15 @@ export default function AdminPage() {
     window.open(url, "_blank");
   };
 
-  // Impressão da comanda térmica (58mm/80mm)
+  // Impressão da comanda térmica (58mm/80mm) padrão iFood (Em pé + Corte no final do conteúdo)
   const handlePrintReceipt = (order: Order) => {
     setPrintingOrder(order);
-    setTimeout(() => {
-      window.print();
-      // Marca como impresso
-      const updated = orders.map((o) =>
-        o.id === order.id ? { ...o, is_printed: true, printed_at: new Date().toISOString() } : o
-      );
-      saveOrders(updated);
-    }, 100);
+    printThermalReceipt(order, store);
+    // Marca como impresso
+    const updated = orders.map((o) =>
+      o.id === order.id ? { ...o, is_printed: true, printed_at: new Date().toISOString() } : o
+    );
+    saveOrders(updated);
   };
 
   // Salvar ou atualizar produto com persistência
@@ -2067,40 +2066,241 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* RECEPTÁCULO PARA IMPRESSÃO TÉRMICA (58mm / 80mm) */}
+      {/* RECEPTÁCULO PARA IMPRESSÃO TÉRMICA (58mm / 80mm) — PADRÃO IFOOD VERTICAL COM CORTE EXATO */}
       {printingOrder && (
-        <div id="thermal-receipt" className="hidden print:block font-mono text-[11px] leading-tight text-black">
-          <div className="text-center font-bold text-sm mb-1">*** NICE DOCE SABOR ***</div>
-          <div className="text-center text-[10px] mb-2">Confeitaria Artesanal - Recife/PE</div>
-          <div className="border-b border-black pb-1 mb-2">
-            <div>PEDIDO: #{printingOrder.order_number}</div>
-            <div>DATA: {new Date(printingOrder.created_at).toLocaleString("pt-BR")}</div>
-            <div>CLIENTE: {printingOrder.customer_name}</div>
-            <div>FONE: {formatPhone(printingOrder.customer_phone)}</div>
-            <div>TIPO: {printingOrder.order_type === "delivery" ? "ENTREGA" : "RETIRADA"}</div>
+        <div id="thermal-receipt" className="hidden print:block font-mono text-[11px] leading-tight text-black bg-white">
+          {/* Cabeçalho da Loja */}
+          <div className="text-center font-black text-sm uppercase tracking-wide">
+            {store.name || "NICE DOCE SABOR"}
+          </div>
+          <div className="text-center text-[10px]">Confeitaria Artesanal de Luxo</div>
+          <div className="text-center text-[9.5px]">
+            {store.city || "Recife/PE"} • {store.phone_whatsapp ? formatPhone(store.phone_whatsapp) : "(81) 98522-8328"}
           </div>
 
-          <div className="border-b border-black pb-1 mb-2">
-            <div className="font-bold mb-1">ITENS:</div>
-            {printingOrder.items?.map((it, i) => (
-              <div key={i} className="mb-1">
-                <div>{it.quantity}x {it.product_name} - {formatCurrency(it.total_price)}</div>
-                {it.selected_variation && <div className="text-[9px]">  Tam: {it.selected_variation.name}</div>}
-                {it.custom_notes && <div className="text-[9px]">  Obs: "{it.custom_notes}"</div>}
+          <div className="border-b-2 border-black my-1" />
+
+          {/* Destaque do Pedido */}
+          <div className="flex justify-between items-baseline font-black text-base">
+            <span>PEDIDO:</span>
+            <span>#{printingOrder.order_number}</span>
+          </div>
+          <div className="flex justify-between text-[10.5px]">
+            <span>DATA/HORA:</span>
+            <span className="font-bold">
+              {new Date(printingOrder.created_at).toLocaleString("pt-BR")}
+            </span>
+          </div>
+          <div className="flex justify-between text-[10.5px]">
+            <span>ORIGEM:</span>
+            <span className="font-bold uppercase">
+              {printingOrder.origin === "balcao" || printingOrder.order_subtype?.includes("balcao")
+                ? "BALCÃO (PDV)"
+                : "CARDÁPIO ONLINE"}
+            </span>
+          </div>
+
+          <div className="border-b-2 border-black my-1" />
+
+          {/* Tipo de Pedido (Destaque Principal) */}
+          <div className="border-2 border-black p-1 text-center font-black text-xs uppercase tracking-wider my-1">
+            {printingOrder.order_subtype === "balcao_consumo" || printingOrder.order_subtype === "consumo_local"
+              ? ">>> CONSUMO NO BALCÃO <<<"
+              : printingOrder.order_subtype === "balcao_retirada" ||
+                (printingOrder.order_type !== "delivery" && printingOrder.origin === "balcao")
+              ? ">>> RETIRADA NO BALCÃO <<<"
+              : printingOrder.order_type === "delivery"
+              ? ">>> ENTREGA (DELIVERY) <<<"
+              : printingOrder.order_subtype === "encomenda" || printingOrder.order_subtype === "balcao_encomenda"
+              ? ">>> ENCOMENDA AGENDADA <<<"
+              : ">>> RETIRADA NO LOCAL <<<"}
+          </div>
+
+          {printingOrder.scheduled_for && (
+            <div className="border border-black p-1 text-center font-bold text-[10px] bg-gray-50 my-1">
+              🗓️ AGENDADO PARA ENTREGA/RETIRADA:<br />
+              <span className="font-black text-xs">{printingOrder.scheduled_for}</span>
+            </div>
+          )}
+
+          <div className="border-b border-dashed border-black my-1" />
+
+          {/* Dados do Cliente */}
+          <div className="font-bold uppercase text-[10px]">DADOS DO CLIENTE:</div>
+          <div className="font-black text-xs">{printingOrder.customer_name || "Cliente Balcão"}</div>
+          <div className="text-[10px]">Fone: {formatPhone(printingOrder.customer_phone) || "Não informado"}</div>
+
+          {/* Endereço Completo se Entrega */}
+          {printingOrder.order_type === "delivery" && (
+            <>
+              <div className="border-b border-dashed border-black my-1" />
+              <div className="font-bold uppercase text-[10px]">ENDEREÇO DE ENTREGA:</div>
+              <div className="font-black text-[11px]">
+                {printingOrder.delivery_address?.street || "Endereço"}, Nº{" "}
+                {printingOrder.delivery_address?.number || "S/N"}
               </div>
-            ))}
+              {printingOrder.delivery_address?.complement && (
+                <div className="text-[10px]">
+                  <b>Compl:</b> {printingOrder.delivery_address.complement}
+                </div>
+              )}
+              <div className="text-[10px]">
+                <b>Bairro:</b>{" "}
+                {printingOrder.delivery_address?.neighborhood ||
+                  printingOrder.neighborhood_name ||
+                  "Geral"}
+              </div>
+              {printingOrder.delivery_address?.reference && (
+                <div className="text-[9.5px]">
+                  <b>Ponto de Ref:</b> {printingOrder.delivery_address.reference}
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="border-b-2 border-black my-1.5" />
+
+          {/* Itens Detalhados do Pedido */}
+          <div className="text-center font-black uppercase text-xs tracking-wider">
+            ITENS DO PEDIDO
+          </div>
+          <div className="border-b border-dashed border-black my-1" />
+
+          {printingOrder.items?.map((it, idx) => (
+            <div key={idx} className="my-1.5">
+              <div className="flex justify-between font-black text-xs">
+                <span>
+                  [{idx + 1}] {it.quantity}x {it.product_name}
+                </span>
+                <span>{formatCurrency(it.total_price)}</span>
+              </div>
+              <div className="pl-2 text-[10px]">
+                <div>Unitário: {formatCurrency(it.unit_price)}</div>
+                {it.selected_variation && (
+                  <div className="font-bold">• Sabor/Tam: {it.selected_variation.name}</div>
+                )}
+                {it.selected_addons && it.selected_addons.length > 0 && (
+                  <div>
+                    • Adicionais:{" "}
+                    {it.selected_addons.map((a) => `${a.name} (+${formatCurrency(a.price)})`).join(", ")}
+                  </div>
+                )}
+                {it.custom_notes && (
+                  <div className="border border-black p-0.5 bg-gray-100 font-bold text-[9.5px] my-0.5">
+                    &gt;&gt;&gt; OBS: {it.custom_notes.toUpperCase()} &lt;&lt;&lt;
+                  </div>
+                )}
+              </div>
+              <div className="border-b border-dotted border-gray-400 my-1" />
+            </div>
+          ))}
+
+          {/* Resumo Financeiro */}
+          <div className="border-b border-dashed border-black my-1" />
+          <div className="flex justify-between text-[10px]">
+            <span>Subtotal dos itens:</span>
+            <span>{formatCurrency(printingOrder.subtotal || 0)}</span>
+          </div>
+          {printingOrder.order_type === "delivery" && (
+            <div className="flex justify-between text-[10px]">
+              <span>Taxa de Entrega:</span>
+              <span>
+                {printingOrder.delivery_fee && printingOrder.delivery_fee > 0
+                  ? formatCurrency(printingOrder.delivery_fee)
+                  : "GRÁTIS"}
+              </span>
+            </div>
+          )}
+          {((printingOrder.coupon_discount || 0) > 0 || (printingOrder.discount || 0) > 0) && (
+            <div className="flex justify-between font-bold text-[10px]">
+              <span>Desconto Cupom ({printingOrder.coupon_code || "CUPOM"}):</span>
+              <span>- {formatCurrency(printingOrder.coupon_discount || printingOrder.discount || 0)}</span>
+            </div>
+          )}
+          {(printingOrder.manual_discount || 0) > 0 && (
+            <div className="flex justify-between font-bold text-[10px]">
+              <span>Desconto Especial (Balcão):</span>
+              <span>- {formatCurrency(printingOrder.manual_discount || 0)}</span>
+            </div>
+          )}
+
+          <div className="border-b-2 border-black my-1" />
+          <div className="flex justify-between font-black text-sm">
+            <span>TOTAL A PAGAR:</span>
+            <span>{formatCurrency(printingOrder.total)}</span>
+          </div>
+          <div className="border-b-2 border-black my-1" />
+
+          {/* Informações de Pagamento e Troco */}
+          <div className="font-bold uppercase text-[10px]">PAGAMENTO:</div>
+          <div className="flex justify-between font-black text-[11px]">
+            <span>FORMA:</span>
+            <span>{printingOrder.payment_method.toUpperCase()}</span>
+          </div>
+          <div className="flex justify-between text-[10.5px]">
+            <span>STATUS:</span>
+            <span className="font-black">
+              {printingOrder.payment_status === "paid"
+                ? ">>> PAGO [OK] <<<"
+                : ">>> A COBRAR NA ENTREGA <<<"}
+            </span>
           </div>
 
-          <div className="text-right font-bold text-xs mb-2">
-            TOTAL: {formatCurrency(printingOrder.total)}
-          </div>
-          <div className="border-b border-black pb-1 mb-2">
-            PAGAMENTO: {printingOrder.payment_method.toUpperCase()}
-            <div>STATUS PGTO: {printingOrder.payment_status === "paid" ? "PAGO [OK]" : "A COBRAR"}</div>
-          </div>
+          {printingOrder.payment_method === "cash" &&
+            printingOrder.cash_change_for &&
+            printingOrder.cash_change_for > printingOrder.total && (
+              <div className="border border-black p-1 text-center font-bold text-[10px] bg-gray-50 my-1">
+                💵 CLIENTE PAGA COM: {formatCurrency(printingOrder.cash_change_for)}
+                <br />
+                <span className="font-black text-[11px]">
+                  LEVAR TROCO DE: {formatCurrency(printingOrder.cash_change_for - printingOrder.total)}
+                </span>
+              </div>
+            )}
 
-          <div className="text-center text-[10px] mt-2">
-            Obrigado pela preferência! Feito com amor.
+          {printingOrder.cash_tendered && (
+            <div className="flex justify-between text-[10px]">
+              <span>Dinheiro Recebido:</span>
+              <span>{formatCurrency(printingOrder.cash_tendered)}</span>
+            </div>
+          )}
+
+          {printingOrder.change_due && printingOrder.change_due > 0 && (
+            <div className="flex justify-between font-bold text-[10.5px]">
+              <span>Troco Devolvido:</span>
+              <span>{formatCurrency(printingOrder.change_due)}</span>
+            </div>
+          )}
+
+          {printingOrder.is_fiado && (
+            <div className="border border-black p-1 text-center font-bold text-[10px] bg-gray-50 my-1">
+              ⚠️ ANOTADO NO CADERNO (FIADO)
+            </div>
+          )}
+
+          {/* Observações Gerais */}
+          {printingOrder.notes && (
+            <>
+              <div className="border-b border-dashed border-black my-1" />
+              <div className="font-bold uppercase text-[10px]">OBSERVAÇÕES DO PEDIDO:</div>
+              <div className="border border-black p-1 font-bold text-[10px] bg-gray-50 my-0.5">
+                "{printingOrder.notes}"
+              </div>
+            </>
+          )}
+
+          {/* Rodapé e Linha de Corte da Guilhotina */}
+          <div className="border-b-2 border-black my-1.5" />
+          <div className="text-center font-black text-[10.5px]">
+            *** FIM DO PEDIDO #{printingOrder.order_number} ***
+          </div>
+          <div className="text-center text-[9.5px] mt-0.5">
+            Confeitaria Artesanal Nice Doce Sabor ❤️<br />
+            Agradecemos a sua preferência!
+          </div>
+          <div className="border-b border-dashed border-black mt-1.5" />
+          <div className="text-center font-bold text-[8.5px] tracking-widest mt-1">
+            ---------- CORTE AQUI ----------
           </div>
         </div>
       )}

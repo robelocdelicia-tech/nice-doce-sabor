@@ -4,6 +4,7 @@ import React, { useState, useMemo } from "react";
 import Image from "next/image";
 import { Product, ProductVariation, Category, Order, OrderItem, Store, Coupon } from "@/types";
 import { formatCurrency, formatPhone, cleanPhoneForWhatsApp } from "@/lib/utils";
+import { printThermalReceipt, printCashClosing } from "@/lib/thermalPrinter";
 import {
   Search,
   Plus,
@@ -255,61 +256,9 @@ export function POSRegisterTab({
     setOrderNotes("");
   };
 
-  // Impressão da Comanda Térmica
+  // Impressão da Comanda Térmica Padrão iFood (Vertical / Em Pé com Corte Imediato)
   const handlePrintReceipt = (order: Order) => {
-    const printWindow = window.open("", "_blank", "width=380,height=600");
-    if (!printWindow) return;
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Comanda Balcão #${order.order_number}</title>
-          <style>
-            body { font-family: monospace; font-size: 12px; margin: 0; padding: 10px; width: 280px; }
-            .center { text-align: center; }
-            .line { border-bottom: 1px dashed #000; margin: 8px 0; }
-            .bold { font-weight: bold; }
-            .flex { display: flex; justify-content: space-between; }
-          </style>
-        </head>
-        <body>
-          <div class="center bold" style="font-size: 14px;">NICE DOCE SABOR</div>
-          <div class="center">Confeitaria Artesanal</div>
-          <div class="center">Recife - PE</div>
-          <div class="line"></div>
-          <div class="center bold" style="font-size: 16px;">PEDIDO BALCÃO #${order.order_number}</div>
-          <div>Data: ${new Date(order.created_at || Date.now()).toLocaleString("pt-BR")}</div>
-          <div>Cliente: ${order.customer_name}</div>
-          <div>Tipo: ${order.order_subtype === "consumo_local" ? "Consumo no Balcão" : order.order_subtype === "retirada" ? "Retirada" : "Encomenda"}</div>
-          <div class="line"></div>
-          <div class="bold">ITENS:</div>
-          ${(order.items || [])
-            .map(
-              (i) => `
-            <div class="flex">
-              <span>${i.quantity}x ${i.product_name} ${i.selected_variation ? `(${i.selected_variation.name})` : ""}</span>
-              <span>R$ ${(i.total_price || 0).toFixed(2)}</span>
-            </div>
-          `
-            )
-            .join("")}
-          <div class="line"></div>
-          <div class="flex"><span>Subtotal:</span><span>R$ ${(order.subtotal || 0).toFixed(2)}</span></div>
-          ${order.discount ? `<div class="flex"><span>Desconto:</span><span>- R$ ${order.discount.toFixed(2)}</span></div>` : ""}
-          <div class="flex bold" style="font-size: 14px;"><span>TOTAL:</span><span>R$ ${(order.total || 0).toFixed(2)}</span></div>
-          <div class="line"></div>
-          <div>Pagamento: ${order.is_fiado ? "PAGAR DEPOIS (FIADO)" : order.payment_method.toUpperCase()} (${order.payment_status === "paid" ? "PAGO" : "PENDENTE"})</div>
-          ${order.cash_tendered ? `<div>Dinheiro Entregue: R$ ${order.cash_tendered.toFixed(2)}</div>` : ""}
-          ${order.change_due ? `<div class="bold">Troco: R$ ${order.change_due.toFixed(2)}</div>` : ""}
-          <div class="line"></div>
-          <div class="center" style="margin-top: 10px;">Agradecemos a sua preferência! ❤️</div>
-          <script>
-            window.onload = function() { window.print(); window.close(); }
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    printThermalReceipt(order, store);
   };
 
   // Enviar comprovante via WhatsApp
@@ -375,49 +324,9 @@ export function POSRegisterTab({
     };
   }, [orders]);
 
+  // Impressão do Fechamento de Caixa na Impressora Térmica (Vertical / Em Pé com Corte Imediato)
   const handlePrintCashClosing = () => {
-    const printWindow = window.open("", "_blank", "width=380,height=600");
-    if (!printWindow) return;
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Fechamento de Caixa - ${cashClosingSummary.date}</title>
-          <style>
-            body { font-family: monospace; font-size: 12px; margin: 0; padding: 10px; width: 280px; }
-            .center { text-align: center; }
-            .line { border-bottom: 1px dashed #000; margin: 8px 0; }
-            .bold { font-weight: bold; }
-            .flex { display: flex; justify-content: space-between; }
-          </style>
-        </head>
-        <body>
-          <div class="center bold" style="font-size: 14px;">NICE DOCE SABOR</div>
-          <div class="center bold" style="font-size: 13px;">FECHAMENTO DE CAIXA DO DIA</div>
-          <div class="center">Data: ${cashClosingSummary.date}</div>
-          <div class="line"></div>
-          <div class="flex"><span>Total de Pedidos:</span><span class="bold">${cashClosingSummary.count}</span></div>
-          <div class="line"></div>
-          <div class="bold">POR FORMA DE PAGAMENTO:</div>
-          <div class="flex"><span>Dinheiro:</span><span>R$ ${cashClosingSummary.totalDinheiro.toFixed(2)}</span></div>
-          <div class="flex"><span>PIX:</span><span>R$ ${cashClosingSummary.totalPix.toFixed(2)}</span></div>
-          <div class="flex"><span>Cartão:</span><span>R$ ${cashClosingSummary.totalCartao.toFixed(2)}</span></div>
-          <div class="flex"><span>Fiado / Pendente:</span><span>R$ ${cashClosingSummary.totalFiado.toFixed(2)}</span></div>
-          <div class="line"></div>
-          <div class="bold">POR ORIGEM:</div>
-          <div class="flex"><span>Balcão (PDV):</span><span>R$ ${cashClosingSummary.totalBalcao.toFixed(2)}</span></div>
-          <div class="flex"><span>Cardápio Online:</span><span>R$ ${cashClosingSummary.totalOnline.toFixed(2)}</span></div>
-          <div class="line"></div>
-          <div class="flex bold" style="font-size: 15px;"><span>TOTAL DO CAIXA:</span><span>R$ ${cashClosingSummary.totalGeral.toFixed(2)}</span></div>
-          <div class="line"></div>
-          <div class="center" style="margin-top: 15px;">Fechado por: Eunice Pereira (Dona)</div>
-          <script>
-            window.onload = function() { window.print(); window.close(); }
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    printCashClosing(cashClosingSummary, store);
   };
 
   return (

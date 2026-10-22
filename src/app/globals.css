@@ -75,28 +75,57 @@ button, a, input, select, textarea {
   text-shadow: 0 1px 2px rgba(0,0,0,0.2);
 }
 
-/* Suporte de Impressão Térmica (58mm e 80mm) sem margens desnecessárias */
+/* Suporte de Impressão Térmica (58mm e 80mm) — Padrão iFood (Vertical / Em Pé, Corte Automático) */
 @media print {
+  @page {
+    size: portrait;
+    margin: 0mm !important;
+  }
+
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 72mm !important;
+    max-width: 72mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: max-content !important;
+    overflow: visible !important;
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   body * {
     visibility: hidden;
   }
+
   #thermal-receipt, #thermal-receipt * {
     visibility: visible;
   }
+
   #thermal-receipt {
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 8px;
-    font-size: 12px;
+    width: 72mm !important;
+    max-width: 72mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: max-content !important;
+    margin: 0 !important;
+    padding: 2mm 2.5mm 3mm 2.5mm !important;
+    font-family: 'Courier New', Courier, monospace, monospace !important;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
     color: #000000 !important;
     background: #FFFFFF !important;
-  }
-  @page {
-    size: auto;
-    margin: 0mm;
+    box-sizing: border-box !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 }
 
