@@ -62,6 +62,7 @@ import {
   PauseCircle,
   PlayCircle,
   SlidersHorizontal,
+  Boxes,
 } from "lucide-react";
 import { ProductFormModal } from "@/components/admin/ProductFormModal";
 import { AIImageStudioModal } from "@/components/admin/AIImageStudioModal";
@@ -74,6 +75,7 @@ import { StoreSettingsTab } from "@/components/admin/StoreSettingsTab";
 import { POSRegisterTab } from "@/components/admin/POSRegisterTab";
 import { CouponsManagerTab } from "@/components/admin/CouponsManagerTab";
 import { BestSellersConfigModal } from "@/components/admin/BestSellersConfigModal";
+import { StockManagerTab } from "@/components/admin/StockManagerTab";
 
 function AdminHeaderLogo() {
   const [error, setError] = useState(false);
@@ -116,7 +118,7 @@ function AdminProductThumb({ src, alt }: { src: string; alt: string }) {
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<
-    "pedidos" | "pdv" | "produtos" | "cupons" | "banners" | "entregas" | "financeiro" | "config"
+    "pedidos" | "pdv" | "produtos" | "estoque" | "cupons" | "banners" | "entregas" | "financeiro" | "config"
   >("pedidos");
 
   const [store, setStore] = useState<Store>(DEFAULT_STORE);
@@ -146,6 +148,13 @@ export default function AdminPage() {
   // Importador em massa
   const [importText, setImportText] = useState("");
   const [importSuccess, setImportSuccess] = useState("");
+
+  // Contador de itens com estoque baixo ou esgotado
+  const lowStockCount = useMemo(() => {
+    return products.filter(
+      (p) => !p.is_archived && p.stock_control_enabled && ((p.current_stock ?? 0) <= (p.min_stock_alert ?? 3))
+    ).length;
+  }, [products]);
 
   // Modais de Criação e IA
   const [isProductFormOpen, setIsProductFormOpen] = useState(false);
@@ -464,6 +473,27 @@ export default function AdminPage() {
     } catch (e) {
       console.error("Erro ao carregar produtos:", e);
     }
+  }, []);
+
+  // Sincronização em tempo real de produtos e estoque entre abas e vendas
+  useEffect(() => {
+    const handleStorageUpdate = () => {
+      try {
+        const savedProds = localStorage.getItem("nice_custom_products");
+        if (savedProds) {
+          const parsed = JSON.parse(savedProds);
+          if (Array.isArray(parsed)) {
+            setProducts(parsed);
+          }
+        }
+      } catch (e) {}
+    };
+    window.addEventListener("storage", handleStorageUpdate);
+    window.addEventListener("stock_update", handleStorageUpdate);
+    return () => {
+      window.removeEventListener("storage", handleStorageUpdate);
+      window.removeEventListener("stock_update", handleStorageUpdate);
+    };
   }, []);
 
   // Atualização de status com 1 toque
@@ -1081,6 +1111,24 @@ export default function AdminPage() {
           </button>
 
           <button
+            onClick={() => setActiveTab("estoque")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              activeTab === "estoque"
+                ? "bg-nice-pink text-white shadow-sm"
+                : "text-nice-wine/80 hover:bg-pink-50"
+            }`}
+          >
+            <Boxes className="w-4 h-4" />
+            <span>Estoque (Entradas & Saídas)</span>
+            {lowStockCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-800 font-extrabold flex items-center gap-1">
+                <AlertCircle className="w-3 h-3 text-amber-600" />
+                {lowStockCount}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setActiveTab("cupons")}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
               activeTab === "cupons"
@@ -1561,6 +1609,21 @@ export default function AdminPage() {
                                   {p.badge}
                                 </span>
                               )}
+                              {p.stock_control_enabled && (
+                                <span
+                                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold flex items-center gap-1 ${
+                                    (p.current_stock ?? 0) <= 0
+                                      ? "bg-rose-100 text-rose-800 border border-rose-200"
+                                      : (p.current_stock ?? 0) <= (p.min_stock_alert ?? 3)
+                                      ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                      : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                  }`}
+                                  title={`Estoque atual: ${p.current_stock ?? 0} unidades`}
+                                >
+                                  <Boxes className="w-2.5 h-2.5" />
+                                  <span>{p.current_stock ?? 0} un.</span>
+                                </span>
+                              )}
                             </div>
                             <span className="text-gray-500 text-[11px] block truncate">
                               {p.description}
@@ -1626,6 +1689,16 @@ export default function AdminPage() {
                               </button>
                             )}
                           </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab("estoque")}
+                            className="px-2 py-1 rounded-lg bg-pink-50 hover:bg-pink-100 text-nice-wine text-[11px] font-bold flex items-center gap-1 transition"
+                            title="Ver entradas e saídas deste produto no Estoque"
+                          >
+                            <Boxes className="w-3.5 h-3.5 text-nice-pink" />
+                            <span className="hidden sm:inline">Estoque</span>
+                          </button>
 
                           <button
                             onClick={() => {
@@ -1711,6 +1784,17 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* ABA GESTÃO DE ESTOQUE (ENTRADAS & SAÍDAS PROFISSIONAIS)  */}
+        {/* ======================================================== */}
+        {activeTab === "estoque" && (
+          <StockManagerTab
+            products={products}
+            categories={categories}
+            onSaveProduct={handleSaveProduct}
+          />
         )}
 
         {/* ======================================================== */}

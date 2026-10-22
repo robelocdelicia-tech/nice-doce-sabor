@@ -3,8 +3,10 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/context/CartContext";
-import { Store, Order, OrderItem, Neighborhood, DeliveryAddress } from "@/types";
+import { Store, Order, OrderItem, Neighborhood, DeliveryAddress, Coupon, Product } from "@/types";
+import { DEFAULT_NEIGHBORHOODS } from "@/lib/constants";
 import { formatCurrency, formatPhone, cleanPhoneForWhatsApp } from "@/lib/utils";
+import { deductStockForOrder } from "@/lib/stockManager";
 import {
   X,
   ArrowLeft,
@@ -20,7 +22,6 @@ import {
   Tag,
   Loader2,
 } from "lucide-react";
-import { Coupon } from "@/types";
 
 interface CheckoutModalProps {
   store: Store;
@@ -84,8 +85,8 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
         customer_phone: customerPhone ? cleanPhoneForWhatsApp(customerPhone) : undefined,
         order_type: orderType,
         items: items.map((i) => ({
-          product_id: i.product.id,
-          category_id: i.product.category_id,
+          product_id: i.product?.id || (i as any).product_id,
+          category_id: i.product?.category_id || (i as any).category_id,
           quantity: i.quantity,
           total_price: i.total_price,
         })),
@@ -126,7 +127,14 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
     try {
       const savedNh = localStorage.getItem("nice_neighborhoods");
       if (savedNh) {
-        setNeighborhoods(JSON.parse(savedNh));
+        const parsed = JSON.parse(savedNh);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setNeighborhoods(parsed);
+        } else {
+          setNeighborhoods(DEFAULT_NEIGHBORHOODS);
+        }
+      } else {
+        setNeighborhoods(DEFAULT_NEIGHBORHOODS);
       }
       const activeCode = localStorage.getItem("nice_active_coupon");
       if (activeCode) {
@@ -135,6 +143,7 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
       }
     } catch (e) {
       console.error("Erro ao carregar dados locais:", e);
+      setNeighborhoods(DEFAULT_NEIGHBORHOODS);
     }
   }, [isOpen]);
 
@@ -155,9 +164,9 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
 
   if (!isOpen) return null;
 
-  // Calcula a antecedência máxima necessária entre todos os itens do carrinho
+  // Calcula a antecedência máxima necessária entre todos os itens do carrinho com proteção contra undefined
   const maxLeadTimeHours = items.reduce(
-    (max, item) => Math.max(max, item.product.lead_time_hours || 0),
+    (max, item) => Math.max(max, item?.product?.lead_time_hours || (item as any)?.lead_time_hours || 0),
     0
   );
 
@@ -215,6 +224,12 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
     setIsSubmitting(true);
 
     try {
+      let clientProducts: Product[] = [];
+      try {
+        const cp = localStorage.getItem("nice_custom_products");
+        if (cp) clientProducts = JSON.parse(cp);
+      } catch (e) {}
+
       // 1. Validação server-side de disponibilidade antes de fechar o pedido
       try {
         const availCheck = await fetch("/api/products/validate-availability", {
@@ -222,17 +237,24 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             items: items.map((i) => ({
-              product_id: i.product.id,
+              product_id: i.product?.id || (i as any).product_id,
               variation_name: i.selected_variation?.name,
+              product_name: i.product?.name || (i as any).product_name,
             })),
+            client_products: clientProducts,
           }),
         });
         const availData = await availCheck.json();
-        if (!availData.valid) {
-          const names = (availData.unavailable_items || []).map((u: any) => u.name).join(", ");
-          setErrorMsg(`Atenção: Os seguintes itens esgotaram: ${names}. Por favor, ajuste seu pedido.`);
-          setIsSubmitting(false);
-          return;
+        if (availData.valid === false || availData.all_available === false) {
+          const names = (availData.unavailable_items || [])
+            .map((u: any) => u.name || u.product_name)
+            .filter(Boolean)
+            .join(", ");
+          if (names) {
+            setErrorMsg(`Atenção: Os seguintes itens esgotaram: ${names}. Por favor, ajuste seu pedido.`);
+            setIsSubmitting(false);
+            return;
+          }
         }
       } catch (availErr) {
         console.warn("Validação remota indisponível, prosseguindo com validação local.");
@@ -243,8 +265,8 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
       const newOrderId = `order_${Date.now()}_${randomSequentialNumber}`;
 
       const orderItems: OrderItem[] = items.map((i) => ({
-        product_id: i.product.id,
-        product_name: i.product.name,
+        product_id: i.product?.id || (i as any).product_id,
+        product_name: i.product?.name || (i as any).product_name || "Item",
         unit_price: i.unit_price,
         quantity: i.quantity,
         selected_variation: i.selected_variation,
@@ -300,6 +322,9 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
       const existingOrdersJson = localStorage.getItem("nice_orders");
       const existingOrders: Order[] = existingOrdersJson ? JSON.parse(existingOrdersJson) : [];
       localStorage.setItem("nice_orders", JSON.stringify([newOrder, ...existingOrders]));
+
+      // Baixa automática de estoque dos itens vendidos
+      deductStockForOrder(orderItems, randomSequentialNumber, newOrderId);
 
       // Tenta enviar para a API/Supabase em segundo plano
       try {

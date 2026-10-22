@@ -14,6 +14,7 @@ import {
   Image as ImageIcon,
   DollarSign,
   Layers,
+  Package,
 } from "lucide-react";
 
 interface ProductFormModalProps {
@@ -38,6 +39,11 @@ export function ProductFormModal({
   const [imageUrl, setImageUrl] = useState("/products/vulcao_ai.jpg");
   const [badge, setBadge] = useState("");
   const [flavors, setFlavors] = useState<ProductVariation[]>([]);
+
+  // Controle de Estoque
+  const [stockControlEnabled, setStockControlEnabled] = useState(true);
+  const [currentStock, setCurrentStock] = useState("10");
+  const [minStockAlert, setMinStockAlert] = useState("3");
 
   // Sabor novo
   const [newFlavorName, setNewFlavorName] = useState("");
@@ -84,6 +90,9 @@ export function ProductFormModal({
       setImageUrl(initialProduct.images[0] || "/products/vulcao_ai.jpg");
       setBadge(initialProduct.badge || "");
       setFlavors(initialProduct.variations ? [...initialProduct.variations] : []);
+      setStockControlEnabled(initialProduct.stock_control_enabled ?? true);
+      setCurrentStock(String(initialProduct.current_stock ?? 10));
+      setMinStockAlert(String(initialProduct.min_stock_alert ?? 3));
     } else {
       setName("");
       setCategoryId(categories[0]?.id || "cat-doces");
@@ -92,6 +101,9 @@ export function ProductFormModal({
       setImageUrl("/products/vulcao_ai.jpg");
       setBadge("");
       setFlavors([]);
+      setStockControlEnabled(true);
+      setCurrentStock("10");
+      setMinStockAlert("3");
     }
     setNewFlavorName("");
     setNewFlavorPrice("");
@@ -175,6 +187,8 @@ export function ProductFormModal({
 
     const cleanBasePrice = basePrice.replace(/[^\d.,]/g, "").replace(",", ".");
     const parsedBasePrice = parseFloat(cleanBasePrice) || 0;
+    const parsedStock = Math.max(0, parseInt(currentStock) || 0);
+    const parsedMinAlert = Math.max(0, parseInt(minStockAlert) || 3);
 
     const product: Product = {
       id: initialProduct?.id || `prod_${Date.now()}`,
@@ -193,6 +207,9 @@ export function ProductFormModal({
       is_featured: initialProduct ? initialProduct.is_featured : false,
       is_sold_out: initialProduct ? initialProduct.is_sold_out : false,
       sort_order: initialProduct?.sort_order || 99,
+      stock_control_enabled: stockControlEnabled,
+      current_stock: stockControlEnabled ? parsedStock : undefined,
+      min_stock_alert: stockControlEnabled ? parsedMinAlert : undefined,
     };
 
     onSave(product);
@@ -406,6 +423,66 @@ export function ProductFormModal({
               onChange={(e) => setBadge(e.target.value)}
               className="w-full p-2.5 rounded-xl border border-pink-200 text-nice-wine focus:outline-none focus:ring-2 focus:ring-nice-pink"
             />
+          </div>
+
+          {/* CONTROLE DE ESTOQUE (ENTRADAS & SAÍDAS) */}
+          <div className="p-3.5 rounded-2xl bg-amber-50/50 border border-amber-200/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="font-extrabold text-nice-wine flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={stockControlEnabled}
+                  onChange={(e) => setStockControlEnabled(e.target.checked)}
+                  className="rounded text-nice-pink focus:ring-nice-pink w-4 h-4 cursor-pointer"
+                />
+                <Package className="w-4 h-4 text-amber-700" />
+                <span className="font-extrabold text-nice-wine">Ativar Controle de Estoque</span>
+              </label>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                stockControlEnabled ? "bg-emerald-100 text-emerald-800" : "bg-gray-100 text-gray-500"
+              }`}>
+                {stockControlEnabled ? "Ativo" : "Desativado"}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-gray-600 leading-relaxed">
+              Permite controlar quantas unidades você produziu. Vendas no site e no balcão abatem o estoque automaticamente.
+            </p>
+
+            {stockControlEnabled && (
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-amber-100 animate-in fade-in">
+                <div>
+                  <label className="font-bold text-nice-wine block mb-1 text-[11px]">
+                    Estoque Atual (Unidades) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    required={stockControlEnabled}
+                    value={currentStock}
+                    onChange={(e) => setCurrentStock(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-amber-300 text-nice-wine font-extrabold text-sm focus:outline-none focus:ring-2 focus:ring-nice-pink bg-white"
+                  />
+                  <span className="text-[10px] text-gray-500 mt-0.5 block">Ex: 5 bolos de pote</span>
+                </div>
+
+                <div>
+                  <label className="font-bold text-nice-wine block mb-1 text-[11px]">
+                    Avisar se Baixar de:
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={minStockAlert}
+                    onChange={(e) => setMinStockAlert(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-amber-300 text-nice-wine font-medium text-xs focus:outline-none focus:ring-2 focus:ring-nice-pink bg-white"
+                  />
+                  <span className="text-[10px] text-gray-500 mt-0.5 block">Alerta de estoque baixo</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* SEÇÃO 2: SABORES E VARIAÇÕES COM PREÇOS */}

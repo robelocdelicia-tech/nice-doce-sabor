@@ -74,6 +74,7 @@ export type ProductVariation = {
   description?: string;
   is_paused?: boolean; // Pausa sabor/variação individualmente
   pause_until?: string | null;
+  stock_quantity?: number; // Saldo de estoque individual por sabor/variação
 };
 
 export type ProductAddOn = {
@@ -100,6 +101,26 @@ export type Product = {
   pause_until?: string | null; // Data/hora até quando está pausado (ex: "Pausar até amanhã")
   is_archived?: boolean; // Soft delete: arquivado para manter histórico financeiro intacto
   sort_order: number;
+  stock_control_enabled?: boolean; // Se true, controla entradas e saídas físicas do item
+  current_stock?: number; // Quantidade física atual disponível (ex: 5 bolos de pote)
+  min_stock_alert?: number; // Alerta de estoque baixo (ex: avisar quando restar 2 ou menos)
+};
+
+export type StockMovementType = "entry" | "sale" | "adjustment" | "loss";
+
+export type StockMovement = {
+  id: string;
+  product_id: string;
+  product_name: string;
+  variation_name?: string | null;
+  type: StockMovementType; // entry: produção/entrada, sale: saída por pedido, adjustment: ajuste manual, loss: perda/avaria
+  quantity: number; // Quantidade movimentada (ex: +5 na produção, -1 na venda)
+  previous_stock: number;
+  new_stock: number;
+  reason?: string; // Motivo descritivo (ex: "Produção da manhã", "Pedido #1024", "Ajuste de inventário")
+  order_id?: string;
+  order_number?: number;
+  created_at: string;
 };
 
 export type CartItem = {

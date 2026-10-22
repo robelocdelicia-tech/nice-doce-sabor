@@ -6,47 +6,70 @@ import { createClient } from "@/lib/supabase/client";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { items = [] } = body;
+    const { items = [], client_products = [] } = body;
 
     if (!Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ all_available: true, unavailable_items: [] });
+      return NextResponse.json({
+        valid: true,
+        all_available: true,
+        unavailable_items: [],
+      });
     }
 
     let allProducts: Product[] = DEFAULT_PRODUCTS;
     let allCategories: Category[] = DEFAULT_CATEGORIES;
 
+    // Se o cliente enviou produtos locais personalizados, mescla
+    if (Array.isArray(client_products) && client_products.length > 0) {
+      const clientMap = new Map(allProducts.map((p) => [p.id, p]));
+      client_products.forEach((cp: Product) => {
+        if (cp && cp.id) clientMap.set(cp.id, cp);
+      });
+      allProducts = Array.from(clientMap.values());
+    }
+
     const supabase = createClient();
     if (supabase) {
-      const { data: dbProds } = await supabase.from("products").select("*");
-      if (dbProds && dbProds.length > 0) allProducts = dbProds;
+      try {
+        const { data: dbProds } = await supabase.from("products").select("*");
+        if (dbProds && dbProds.length > 0) {
+          const map = new Map(allProducts.map((p) => [p.id, p]));
+          dbProds.forEach((dp: Product) => map.set(dp.id, dp));
+          allProducts = Array.from(map.values());
+        }
 
-      const { data: dbCats } = await supabase.from("categories").select("*");
-      if (dbCats && dbCats.length > 0) allCategories = dbCats;
+        const { data: dbCats } = await supabase.from("categories").select("*");
+        if (dbCats && dbCats.length > 0) allCategories = dbCats;
+      } catch (err) {}
     }
 
     const now = new Date();
     const unavailable: {
       cart_item_id: string;
+      name: string;
       product_name: string;
       reason: string;
     }[] = [];
 
-    for (const item of items as CartItem[]) {
-      const liveProduct = allProducts.find((p) => p.id === item.product.id);
+    for (const item of items) {
+      const prodId = item.product_id || item.product?.id || item.id;
+      const varName = item.variation_name || item.selected_variation?.name;
+      const prodName = item.product_name || item.product?.name || item.name || "Item";
+
+      const liveProduct = allProducts.find(
+        (p) => p.id === prodId || p.name.trim().toLowerCase() === prodName.trim().toLowerCase()
+      );
 
       if (!liveProduct) {
-        unavailable.push({
-          cart_item_id: item.cart_item_id,
-          product_name: item.product.name,
-          reason: "Item não encontrado ou removido do cardápio.",
-        });
+        // Se não encontrou nem por id nem por nome, não bloqueia pedidos de itens recém-criados localmente
         continue;
       }
 
       // Checa se produto foi arquivado ou desativado
-      if (liveProduct.is_archived || !liveProduct.is_active) {
+      if (liveProduct.is_archived || liveProduct.is_active === false) {
         unavailable.push({
-          cart_item_id: item.cart_item_id,
+          cart_item_id: item.cart_item_id || prodId,
+          name: liveProduct.name,
           product_name: liveProduct.name,
           reason: "Item indisponível no momento.",
         });
@@ -60,7 +83,8 @@ export async function POST(request: NextRequest) {
 
       if (isProductPaused) {
         unavailable.push({
-          cart_item_id: item.cart_item_id,
+          cart_item_id: item.cart_item_id || prodId,
+          name: liveProduct.name,
           product_name: liveProduct.name,
           reason: "Produto esgotado temporariamente.",
         });
@@ -75,7 +99,8 @@ export async function POST(request: NextRequest) {
 
         if (isCatPaused) {
           unavailable.push({
-            cart_item_id: item.cart_item_id,
+            cart_item_id: item.cart_item_id || prodId,
+            name: liveProduct.name,
             product_name: liveProduct.name,
             reason: `Categoria ${cat?.name || ""} temporariamente pausada.`,
           });
@@ -84,9 +109,9 @@ export async function POST(request: NextRequest) {
       }
 
       // Checa se o sabor específico selecionado está pausado
-      if (item.selected_variation) {
-        const liveVar = liveProduct.variations?.find(
-          (v) => v.name === item.selected_variation?.name
+      if (varName && liveProduct.variations) {
+        const liveVar = liveProduct.variations.find(
+          (v) => v.name.trim().toLowerCase() === varName.trim().toLowerCase()
         );
 
         const isVarPaused =
@@ -95,9 +120,10 @@ export async function POST(request: NextRequest) {
 
         if (isVarPaused) {
           unavailable.push({
-            cart_item_id: item.cart_item_id,
-            product_name: `${liveProduct.name} (${item.selected_variation.name})`,
-            reason: `O sabor "${item.selected_variation.name}" acabou e está pausado.`,
+            cart_item_id: item.cart_item_id || prodId,
+            name: `${liveProduct.name} (${varName})`,
+            product_name: `${liveProduct.name} (${varName})`,
+            reason: `O sabor "${varName}" acabou e está pausado.`,
           });
           continue;
         }
@@ -105,14 +131,15 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
+      valid: unavailable.length === 0,
       all_available: unavailable.length === 0,
       unavailable_items: unavailable,
     });
   } catch (error) {
     console.error("Erro ao validar disponibilidade:", error);
     return NextResponse.json(
-      { all_available: true, unavailable_items: [] },
-      { status: 500 }
+      { valid: true, all_available: true, unavailable_items: [] },
+      { status: 200 }
     );
   }
 }

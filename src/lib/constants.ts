@@ -1,4 +1,4 @@
-import { Store, Category, Product, Testimonial, PromoBanner, Coupon, BestSellersConfig, MediaAsset } from "@/types";
+import { Store, Category, Product, Testimonial, PromoBanner, Coupon, BestSellersConfig, MediaAsset, Neighborhood } from "@/types";
 
 export const DEFAULT_BEST_SELLERS_CONFIG: BestSellersConfig = {
   mode: "auto",
@@ -50,6 +50,21 @@ export const DEFAULT_STORE: Store = {
   },
 };
 
+// Bairros padrão de atendimento em Recife e região metropolitana
+export const DEFAULT_NEIGHBORHOODS: Neighborhood[] = [
+  { id: "nh-boa-viagem", name: "Boa Viagem", delivery_fee: 7.0, is_active: true },
+  { id: "nh-setubal", name: "Setúbal", delivery_fee: 8.0, is_active: true },
+  { id: "nh-pina", name: "Pina", delivery_fee: 9.0, is_active: true },
+  { id: "nh-imbiribeira", name: "Imbiribeira", delivery_fee: 8.0, is_active: true },
+  { id: "nh-piedade", name: "Piedade (Jaboatão)", delivery_fee: 10.0, is_active: true },
+  { id: "nh-candeias", name: "Candeias (Jaboatão)", delivery_fee: 12.0, is_active: true },
+  { id: "nh-madalena", name: "Madalena", delivery_fee: 12.0, is_active: true },
+  { id: "nh-gracas", name: "Graças", delivery_fee: 14.0, is_active: true },
+  { id: "nh-espinheiro", name: "Espinheiro", delivery_fee: 14.0, is_active: true },
+  { id: "nh-casa-forte", name: "Casa Forte", delivery_fee: 15.0, is_active: true },
+  { id: "nh-afogados", name: "Afogados", delivery_fee: 11.0, is_active: true },
+];
+
 // Categorias organizadas e completas
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: "cat-doces", name: "Doces", slug: "doces", icon: "candy", sort_order: 1, is_active: true },
@@ -91,6 +106,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: false,
     is_sold_out: false,
     sort_order: 1,
+    stock_control_enabled: true,
+    current_stock: 20,
+    min_stock_alert: 5,
   },
   {
     id: "p-tortinha",
@@ -108,6 +126,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: false,
     is_sold_out: false,
     sort_order: 2,
+    stock_control_enabled: true,
+    current_stock: 8,
+    min_stock_alert: 2,
   },
   {
     id: "p-brownie-trad",
@@ -127,6 +148,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: false,
     is_sold_out: false,
     sort_order: 3,
+    stock_control_enabled: true,
+    current_stock: 10,
+    min_stock_alert: 3,
   },
   {
     id: "p-brownie-rech",
@@ -146,6 +170,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: true,
     is_sold_out: false,
     sort_order: 4,
+    stock_control_enabled: true,
+    current_stock: 8,
+    min_stock_alert: 2,
   },
   {
     id: "p-pudim",
@@ -165,6 +192,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: false,
     is_sold_out: false,
     sort_order: 5,
+    stock_control_enabled: true,
+    current_stock: 5,
+    min_stock_alert: 2,
   },
   {
     id: "p-bombom-uva",
@@ -185,6 +215,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: true,
     is_sold_out: false,
     sort_order: 6,
+    stock_control_enabled: true,
+    current_stock: 6,
+    min_stock_alert: 2,
   },
   {
     id: "p-bombom-brownie",
@@ -203,6 +236,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: false,
     is_sold_out: false,
     sort_order: 7,
+    stock_control_enabled: true,
+    current_stock: 6,
+    min_stock_alert: 2,
   },
   {
     id: "p-torta-abacaxi",
@@ -221,6 +257,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: false,
     is_sold_out: false,
     sort_order: 8,
+    stock_control_enabled: true,
+    current_stock: 4,
+    min_stock_alert: 1,
   },
   {
     id: "p-vulcao",
@@ -240,6 +279,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: true,
     is_sold_out: false,
     sort_order: 9,
+    stock_control_enabled: true,
+    current_stock: 5,
+    min_stock_alert: 2,
   },
 
   // ==========================================
@@ -278,6 +320,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: true,
     is_sold_out: false,
     sort_order: 10,
+    stock_control_enabled: true,
+    current_stock: 5,
+    min_stock_alert: 2,
   },
 
   // ==========================================
@@ -305,6 +350,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: true,
     is_sold_out: false,
     sort_order: 11,
+    stock_control_enabled: true,
+    current_stock: 6,
+    min_stock_alert: 2,
   },
 
   // ==========================================
@@ -332,6 +380,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: false,
     is_sold_out: false,
     sort_order: 12,
+    stock_control_enabled: true,
+    current_stock: 8,
+    min_stock_alert: 2,
   },
 
   // ==========================================
@@ -380,6 +431,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: false,
     is_sold_out: false,
     sort_order: 14,
+    stock_control_enabled: true,
+    current_stock: 12,
+    min_stock_alert: 3,
   },
   {
     id: "p-empada-frango",
@@ -399,6 +453,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: false,
     is_sold_out: false,
     sort_order: 15,
+    stock_control_enabled: true,
+    current_stock: 8,
+    min_stock_alert: 2,
   },
   {
     id: "p-empada-charque",
@@ -418,6 +475,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: false,
     is_sold_out: false,
     sort_order: 16,
+    stock_control_enabled: true,
+    current_stock: 8,
+    min_stock_alert: 2,
   },
   {
     id: "p-empadao-frango",
@@ -436,6 +496,9 @@ export const DEFAULT_PRODUCTS: Product[] = [
     is_featured: false,
     is_sold_out: false,
     sort_order: 17,
+    stock_control_enabled: true,
+    current_stock: 5,
+    min_stock_alert: 2,
   },
 
   // ==========================================

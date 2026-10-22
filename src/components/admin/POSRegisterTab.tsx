@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Product, ProductVariation, Category, Order, OrderItem, Store, Coupon } from "@/types";
 import { formatCurrency, formatPhone, cleanPhoneForWhatsApp } from "@/lib/utils";
 import { printThermalReceipt, printCashClosing } from "@/lib/thermalPrinter";
+import { deductStockForOrder } from "@/lib/stockManager";
 import {
   Search,
   Plus,
@@ -243,6 +244,7 @@ export function POSRegisterTab({
     };
 
     onSaveOrder(newOrder);
+    deductStockForOrder(newOrder.items || [], newOrder.order_number, newOrder.id);
     setFinishedOrder(newOrder);
 
     // Limpa tela do PDV para o próximo atendimento
