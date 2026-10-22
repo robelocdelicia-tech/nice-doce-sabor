@@ -78,7 +78,11 @@ export async function POST(request: NextRequest) {
 
     const now = new Date();
     for (const item of items) {
-      const liveProduct = allProducts.find((p) => p.id === item.product_id);
+      const liveProduct = allProducts.find(
+        (p) =>
+          (item.product_id && p.id === item.product_id) ||
+          p.name.trim().toLowerCase() === item.product_name.trim().toLowerCase()
+      );
       if (!liveProduct || liveProduct.is_archived || !liveProduct.is_active) {
         return NextResponse.json(
           {
@@ -122,7 +126,9 @@ export async function POST(request: NextRequest) {
       // Sabor pausado
       if (item.selected_variation) {
         const liveVar = liveProduct.variations?.find(
-          (v) => v.name === item.selected_variation?.name
+          (v) =>
+            v.name.trim().toLowerCase() ===
+            item.selected_variation?.name.trim().toLowerCase()
         );
         const isVarPaused =
           liveVar?.is_paused ||

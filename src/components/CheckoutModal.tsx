@@ -243,6 +243,7 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
       const newOrderId = `order_${Date.now()}_${randomSequentialNumber}`;
 
       const orderItems: OrderItem[] = items.map((i) => ({
+        product_id: i.product.id,
         product_name: i.product.name,
         unit_price: i.unit_price,
         quantity: i.quantity,
