@@ -21,6 +21,8 @@ import {
   Eye,
   Sparkles,
   ExternalLink,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 
 interface CouponsManagerTabProps {
@@ -48,6 +50,9 @@ export function CouponsManagerTab({
   const [customBlastMessage, setCustomBlastMessage] = useState("");
   const [isShareCardOpen, setIsShareCardOpen] = useState(false);
   const [selectedCouponForCard, setSelectedCouponForCard] = useState<Coupon | null>(null);
+  const [deleteModalCoupon, setDeleteModalCoupon] = useState<Coupon | null>(null);
+  const [formError, setFormError] = useState("");
+  const [toastMessage, setToastMessage] = useState("");
 
   // Formulário State
   const [code, setCode] = useState("");
@@ -133,6 +138,7 @@ export function CouponsManagerTab({
   }, [customerList, customerFilter]);
 
   const handleOpenForm = (coupon?: Coupon) => {
+    setFormError("");
     if (coupon) {
       setEditingCoupon(coupon);
       setCode(coupon.code);
@@ -192,7 +198,38 @@ export function CouponsManagerTab({
 
   const handleSaveCoupon = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code.trim()) return;
+    setFormError("");
+
+    const cleanCode = code.trim().toUpperCase();
+    if (!cleanCode) {
+      setFormError("Informe o código do cupom (ex: NICE10).");
+      return;
+    }
+
+    const numVal = parseFloat(discountValue);
+    if (isNaN(numVal) || numVal <= 0) {
+      setFormError("Informe um valor de desconto válido maior que zero.");
+      return;
+    }
+
+    if (discountType === "percentage" && numVal > 100) {
+      setFormError("O desconto percentual não pode ultrapassar 100%.");
+      return;
+    }
+
+    if (scope === "category" && !scopeCategoryId) {
+      setFormError("Por favor, selecione qual categoria receberá o desconto.");
+      return;
+    }
+
+    // Verifica se já existe outro cupom com o mesmo código
+    const isDuplicate = coupons.some(
+      (c) => c.code.trim().toUpperCase() === cleanCode && c.id !== editingCoupon?.id
+    );
+    if (isDuplicate) {
+      setFormError(`Já existe um cupom cadastrado com o código ${cleanCode}. Escolha outro código ou edite o existente.`);
+      return;
+    }
 
     const targetIds =
       scope === "category" && scopeCategoryId
@@ -202,11 +239,11 @@ export function CouponsManagerTab({
         : [];
 
     const newCoupon: Coupon = {
-      id: editingCoupon ? editingCoupon.id : `coupon_${Date.now()}`,
-      code: code.trim().toUpperCase(),
-      name: name.trim() || code.trim().toUpperCase(),
+      id: editingCoupon ? editingCoupon.id : (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `coupon_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`),
+      code: cleanCode,
+      name: name.trim() || cleanCode,
       discount_type: discountType,
-      discount_value: parseFloat(discountValue) || 0,
+      discount_value: numVal,
       scope,
       scope_category_id: scopeCategoryId || undefined,
       scope_product_ids: scopeProductIds.length > 0 ? scopeProductIds : undefined,
@@ -237,18 +274,37 @@ export function CouponsManagerTab({
     if (editingCoupon) {
       updated = coupons.map((c) => (c.id === editingCoupon.id ? newCoupon : c));
     } else {
-      updated = [newCoupon, ...coupons];
+      const filtered = coupons.filter((c) => c.code.trim().toUpperCase() !== cleanCode);
+      updated = [newCoupon, ...filtered];
     }
 
     onSaveCoupons(updated);
     setIsFormOpen(false);
+    setToastMessage(editingCoupon ? `Cupom ${cleanCode} atualizado com sucesso!` : `Cupom ${cleanCode} cadastrado com sucesso!`);
+    setTimeout(() => setToastMessage(""), 4000);
   };
 
-  const handleDeleteCoupon = (id: string) => {
-    if (confirm("Tem certeza que deseja excluir este cupom de desconto?")) {
-      const updated = coupons.filter((c) => c.id !== id);
-      onSaveCoupons(updated);
-    }
+  const handleOpenDelete = (coupon: Coupon) => {
+    setDeleteModalCoupon(coupon);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deleteModalCoupon) return;
+    const target = deleteModalCoupon;
+    const cleanCode = target.code.trim().toUpperCase();
+    const updated = coupons.filter(
+      (c) => c.id !== target.id && c.code.trim().toUpperCase() !== cleanCode
+    );
+
+    onSaveCoupons(updated);
+
+    fetch(`/api/coupons?id=${encodeURIComponent(target.id)}&code=${encodeURIComponent(cleanCode)}`, {
+      method: "DELETE",
+    }).catch((e) => console.warn("Aviso ao deletar cupom no servidor:", e));
+
+    setDeleteModalCoupon(null);
+    setToastMessage(`Cupom ${cleanCode} excluído com sucesso!`);
+    setTimeout(() => setToastMessage(""), 4000);
   };
 
   const handleToggleActive = (id: string) => {
@@ -281,6 +337,22 @@ export function CouponsManagerTab({
 
   return (
     <div className="space-y-6">
+      {toastMessage && (
+        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between gap-2 shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage("")}
+            className="text-emerald-700 hover:text-emerald-900 text-xs font-semibold"
+          >
+            Fechar
+          </button>
+        </div>
+      )}
+
       {/* Topo do Módulo */}
       <div className="bg-white rounded-3xl p-6 border border-pink-100 shadow-sm flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -443,7 +515,8 @@ export function CouponsManagerTab({
                     <Edit className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => handleDeleteCoupon(coupon.id)}
+                    type="button"
+                    onClick={() => handleOpenDelete(coupon)}
                     className="p-2 rounded-xl text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition"
                     title="Excluir cupom"
                   >
@@ -704,6 +777,13 @@ export function CouponsManagerTab({
                 </label>
               </div>
 
+              {formError && (
+                <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-semibold text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
+
               <div className="pt-4 border-t border-pink-100 flex justify-end gap-2">
                 <button
                   type="button"
@@ -720,6 +800,45 @@ export function CouponsManagerTab({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE CUPOM */}
+      {deleteModalCoupon && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-pink-100 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-bold text-nice-wine text-base">
+                Excluir Cupom de Desconto?
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Deseja realmente excluir o cupom{" "}
+                <span className="font-mono font-bold text-nice-pink">
+                  {deleteModalCoupon.code}
+                </span>
+                ? Ele será removido imediatamente do cardápio e do sistema.
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteModalCoupon(null)}
+                className="flex-1 py-2.5 rounded-2xl border border-pink-200 text-nice-wine font-semibold hover:bg-pink-50 transition text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="flex-1 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition text-xs shadow-md"
+              >
+                Sim, Excluir
+              </button>
+            </div>
           </div>
         </div>
       )}

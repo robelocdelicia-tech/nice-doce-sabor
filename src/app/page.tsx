@@ -105,7 +105,7 @@ export default function HomePage() {
         fetch("/api/coupons")
           .then((res) => res.json())
           .then((data) => {
-            if (data.success && Array.isArray(data.coupons) && data.coupons.length > 0) {
+            if (data.success && Array.isArray(data.coupons)) {
               setCoupons(data.coupons);
               localStorage.setItem("nice_custom_coupons", JSON.stringify(data.coupons));
             }

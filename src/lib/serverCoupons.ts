@@ -6,9 +6,33 @@ import { createClient } from "@/lib/supabase/client";
 
 // Caminho de fallback para persistência local dos cupons no servidor
 const CACHE_FILE_PATH = path.join(process.cwd(), ".next", "nice_custom_coupons.json");
+const DELETED_CODES_PATH = path.join(process.cwd(), ".next", "nice_deleted_coupons.json");
 
 // Memória em runtime
 let memoryCoupons: Coupon[] = [...DEFAULT_COUPONS];
+
+function loadDeletedCodes(): Set<string> {
+  try {
+    if (fs.existsSync(DELETED_CODES_PATH)) {
+      const content = fs.readFileSync(DELETED_CODES_PATH, "utf-8");
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed.map((c: string) => String(c).trim().toUpperCase()));
+      }
+    }
+  } catch (err) {}
+  return new Set();
+}
+
+function saveDeletedCodes(codes: Set<string>) {
+  try {
+    const dir = path.dirname(DELETED_CODES_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(DELETED_CODES_PATH, JSON.stringify(Array.from(codes)), "utf-8");
+  } catch (err) {}
+}
 
 // Inicialização: tenta carregar do arquivo de cache local
 function loadFromDisk(): Coupon[] {
@@ -21,7 +45,7 @@ function loadFromDisk(): Coupon[] {
       }
     }
   } catch (err) {
-    // Falha silenciosa em ambientes somente-leitura (ex: Vercel/Netlify read-only /var/task)
+    // Falha silenciosa em ambientes somente-leitura
   }
   return memoryCoupons;
 }
@@ -33,9 +57,7 @@ function saveToDisk(coupons: Coupon[]) {
       fs.mkdirSync(dir, { recursive: true });
     }
     fs.writeFileSync(CACHE_FILE_PATH, JSON.stringify(coupons, null, 2), "utf-8");
-  } catch (err) {
-    // Falha silenciosa
-  }
+  } catch (err) {}
 }
 
 // Normaliza campos do cupom para garantir total interoperabilidade
@@ -117,18 +139,34 @@ export function normalizeCoupon(c: any): Coupon {
     show_banner: c.show_banner !== false && c.show_on_menu !== false,
     show_on_menu: c.show_banner !== false && c.show_on_menu !== false,
     banner_text: c.banner_text || undefined,
+    revenue_generated: Number(c.revenue_generated) || 0,
+    total_discount_given: Number(c.total_discount_given) || 0,
     created_at: c.created_at || new Date().toISOString(),
   };
 }
 
-// Carrega todos os cupons (Supabase + Disco/Memória + Defaults)
+// Carrega todos os cupons (Supabase + Disco/Memória + Defaults ignorando deletados)
 export async function getServerCoupons(): Promise<Coupon[]> {
+  const deletedCodes = loadDeletedCodes();
   let list = loadFromDisk();
 
-  // Garante que os cupons padrão existam na lista
   const codeMap = new Map<string, Coupon>();
-  DEFAULT_COUPONS.forEach((dc) => codeMap.set(dc.code.toUpperCase(), normalizeCoupon(dc)));
-  list.forEach((c) => codeMap.set(c.code.toUpperCase(), normalizeCoupon(c)));
+
+  // Injeta cupons padrão que não foram explicitamente deletados
+  DEFAULT_COUPONS.forEach((dc) => {
+    const code = dc.code.trim().toUpperCase();
+    if (!deletedCodes.has(code)) {
+      codeMap.set(code, normalizeCoupon(dc));
+    }
+  });
+
+  // Injeta cupons salvos em disco/memória
+  list.forEach((c) => {
+    const code = c.code.trim().toUpperCase();
+    if (!deletedCodes.has(code)) {
+      codeMap.set(code, normalizeCoupon(c));
+    }
+  });
 
   try {
     const supabase = createClient();
@@ -138,12 +176,15 @@ export async function getServerCoupons(): Promise<Coupon[]> {
         .select("*");
 
       if (!error && dbCoupons && dbCoupons.length > 0) {
-        dbCoupons.forEach((dbc) => codeMap.set(dbc.code.toUpperCase(), normalizeCoupon(dbc)));
+        dbCoupons.forEach((dbc) => {
+          const code = dbc.code?.trim().toUpperCase();
+          if (code && !deletedCodes.has(code)) {
+            codeMap.set(code, normalizeCoupon(dbc));
+          }
+        });
       }
     }
-  } catch (err) {
-    // Falha silenciosa de Supabase
-  }
+  } catch (err) {}
 
   const result = Array.from(codeMap.values());
   memoryCoupons = result;
@@ -156,21 +197,43 @@ export async function saveServerCoupons(coupons: Coupon[]): Promise<Coupon[]> {
   memoryCoupons = normalized;
   saveToDisk(normalized);
 
+  const currentCodes = new Set(normalized.map((c) => c.code.trim().toUpperCase()));
+
+  // Se algum cupom padrão foi removido da lista, registra como deletado
+  const deletedCodes = loadDeletedCodes();
+  DEFAULT_COUPONS.forEach((dc) => {
+    const cCode = dc.code.trim().toUpperCase();
+    if (!currentCodes.has(cCode)) {
+      deletedCodes.add(cCode);
+    }
+  });
+  saveDeletedCodes(deletedCodes);
+
   try {
     const supabase = createClient();
     if (supabase) {
-      // Upsert dos cupons no Supabase
-      await supabase.from("coupons").upsert(
-        normalized.map((c) => ({
+      // 1. Remove do Supabase cupons que não constam mais na lista atual
+      const { data: dbAll } = await supabase.from("coupons").select("id, code");
+      if (dbAll && dbAll.length > 0) {
+        const toDeleteIds = dbAll
+          .filter((d) => !currentCodes.has(d.code?.trim().toUpperCase()))
+          .map((d) => d.id);
+
+        if (toDeleteIds.length > 0) {
+          await supabase.from("coupons").delete().in("id", toDeleteIds);
+        }
+      }
+
+      // 2. Upsert compatível com os check constraints do banco Supabase
+      if (normalized.length > 0) {
+        const rows = normalized.map((c) => ({
           id: c.id,
           code: c.code,
           name: c.name,
-          discount_type: c.discount_type,
+          discount_type: c.discount_type === "percentage" || c.discount_type === "percent" ? "percent" : "fixed",
           discount_value: c.discount_value,
-          scope: c.scope,
+          scope: c.scope === "product" ? "products" : c.scope,
           target_ids: c.target_ids || [],
-          scope_category_id: c.scope_category_id || null,
-          scope_product_ids: c.scope_product_ids || [],
           min_order_value: c.min_order_value || null,
           max_discount_cap: c.max_discount_cap || null,
           start_date: c.start_date || null,
@@ -183,15 +246,54 @@ export async function saveServerCoupons(coupons: Coupon[]): Promise<Coupon[]> {
           is_active: c.is_active,
           show_banner: c.show_banner,
           banner_text: c.banner_text || null,
-        })),
-        { onConflict: "code" }
-      );
+        }));
+
+        await supabase.from("coupons").upsert(rows, { onConflict: "code" });
+      }
     }
   } catch (err) {
     console.warn("Aviso ao salvar cupons no Supabase:", err);
   }
 
   return normalized;
+}
+
+// Exclusão definitiva de um cupom
+export async function deleteServerCoupon(idOrCode: string): Promise<boolean> {
+  const clean = String(idOrCode || "").trim().toUpperCase();
+  if (!clean) return false;
+
+  const deletedCodes = loadDeletedCodes();
+
+  // Encontra código se foi passado id
+  const target = memoryCoupons.find(
+    (c) => c.id === idOrCode || c.code.toUpperCase() === clean
+  );
+  const codeToDelete = target ? target.code.toUpperCase() : clean;
+
+  deletedCodes.add(codeToDelete);
+  saveDeletedCodes(deletedCodes);
+
+  // Remove de memória e disco
+  memoryCoupons = memoryCoupons.filter(
+    (c) => c.id !== idOrCode && c.code.toUpperCase() !== codeToDelete
+  );
+  saveToDisk(memoryCoupons);
+
+  // Deleta do Supabase se conectado
+  try {
+    const supabase = createClient();
+    if (supabase) {
+      await supabase
+        .from("coupons")
+        .delete()
+        .or(`id.eq.${idOrCode},code.eq.${codeToDelete}`);
+    }
+  } catch (err) {
+    console.warn("Aviso ao excluir cupom no Supabase:", err);
+  }
+
+  return true;
 }
 
 export interface ValidationItem {
