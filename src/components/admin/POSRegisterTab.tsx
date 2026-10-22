@@ -169,14 +169,15 @@ export function POSRegisterTab({
     }
 
     let disc = 0;
-    if (coupon.discount_type === "percentage") {
+    if (coupon.discount_type === "percentage" || coupon.discount_type === "percent") {
       disc = (subtotal * coupon.discount_value) / 100;
     } else {
       disc = coupon.discount_value;
     }
 
-    if (coupon.max_discount_value && disc > coupon.max_discount_value) {
-      disc = coupon.max_discount_value;
+    const maxCap = coupon.max_discount_cap ?? coupon.max_discount_value;
+    if (maxCap && disc > maxCap) {
+      disc = maxCap;
     }
 
     setCouponDiscount(Math.min(disc, subtotal));

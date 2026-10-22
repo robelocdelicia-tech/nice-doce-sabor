@@ -198,6 +198,7 @@ export type Order = {
   discount: number;
   coupon_code?: string | null;
   coupon_discount?: number;
+  applied_coupon?: Coupon | null;
   manual_discount?: number;
   total: number;
   payment_method: "pix" | "cash" | "card" | "fiado";

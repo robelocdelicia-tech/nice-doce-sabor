@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { Order, Product, Category, Coupon, CartItem } from "@/types";
 import { DEFAULT_PRODUCTS, DEFAULT_CATEGORIES, DEFAULT_COUPONS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
+import {
+  getServerCoupons,
+  calculateCouponDiscount,
+  normalizeCoupon,
+  saveServerCoupons,
+} from "@/lib/serverCoupons";
 
 // Memória local em runtime para fallback caso o Supabase não esteja conectado
 let memoryOrders: Order[] = [];
@@ -146,33 +152,28 @@ export async function POST(request: NextRequest) {
     // 3. VALIDAÇÃO E RECÁLCULO DO CUPOM NO SERVIDOR (NUNCA CONFIAR NO CLIENTE)
     if (cleanCouponCode) {
       let coupon: Coupon | null = null;
-      if (supabase) {
-        const { data: dbCoupon } = await supabase
-          .from("coupons")
-          .select("*")
-          .eq("code", cleanCouponCode)
-          .maybeSingle();
-        coupon = dbCoupon;
+      const allCoupons = await getServerCoupons();
+      coupon = allCoupons.find((c) => c.code.toUpperCase() === cleanCouponCode) || null;
+
+      if (!coupon && (orderData as any).applied_coupon) {
+        coupon = normalizeCoupon((orderData as any).applied_coupon);
       }
+
       if (!coupon) {
-        coupon = DEFAULT_COUPONS.find((c) => c.code === cleanCouponCode) || null;
+        coupon = DEFAULT_COUPONS.find((c) => c.code.toUpperCase() === cleanCouponCode) || null;
       }
 
-      if (coupon && coupon.is_active) {
-        // Valida pedido mínimo
-        if (!coupon.min_order_value || calculatedSubtotal >= coupon.min_order_value) {
-          if (coupon.scope === "delivery") {
-            serverCouponDiscount = deliveryFee;
-          } else if (coupon.discount_type === "percent") {
-            serverCouponDiscount = (calculatedSubtotal * coupon.discount_value) / 100;
-          } else {
-            serverCouponDiscount = Math.min(coupon.discount_value, calculatedSubtotal);
-          }
-
-          if (coupon.max_discount_cap && coupon.max_discount_cap > 0) {
-            serverCouponDiscount = Math.min(serverCouponDiscount, coupon.max_discount_cap);
-          }
-          serverCouponDiscount = Math.round(serverCouponDiscount * 100) / 100;
+      if (coupon) {
+        const calc = calculateCouponDiscount(
+          coupon,
+          calculatedSubtotal,
+          deliveryFee,
+          items as any,
+          orderData.order_type || "pickup",
+          customerPhone
+        );
+        if (calc.valid) {
+          serverCouponDiscount = calc.discount;
         }
       }
     }
@@ -302,6 +303,25 @@ export async function POST(request: NextRequest) {
       } catch (dbErr) {
         console.warn("Erro ao salvar no Supabase (salvo em memória):", dbErr);
       }
+    }
+
+    // Registra estatística do cupom no cache local do servidor
+    if (finalOrder.coupon_code && finalOrder.coupon_discount && finalOrder.coupon_discount > 0) {
+      try {
+        const allCoupons = await getServerCoupons();
+        const updated = allCoupons.map((c) => {
+          if (c.code.toUpperCase() === finalOrder.coupon_code?.toUpperCase()) {
+            return {
+              ...c,
+              uses_count: (c.uses_count || 0) + 1,
+              revenue_generated: (c.revenue_generated || 0) + finalOrder.total,
+              total_discount_given: (c.total_discount_given || 0) + (finalOrder.coupon_discount || 0),
+            };
+          }
+          return c;
+        });
+        await saveServerCoupons(updated);
+      } catch (e) {}
     }
 
     memoryOrders = [finalOrder, ...memoryOrders];

@@ -279,6 +279,26 @@ export default function AdminPage() {
       }
     }
 
+    const savedCoupons = localStorage.getItem("nice_custom_coupons");
+    if (savedCoupons) {
+      try {
+        setCoupons(JSON.parse(savedCoupons));
+      } catch (e) {
+        console.error("Erro ao carregar cupons locais:", e);
+      }
+    }
+
+    // Sincroniza com a API do servidor
+    fetch("/api/coupons")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.coupons) && data.coupons.length > 0) {
+          setCoupons(data.coupons);
+          localStorage.setItem("nice_custom_coupons", JSON.stringify(data.coupons));
+        }
+      })
+      .catch((err) => console.warn("Aviso ao carregar cupons do servidor:", err));
+
     loadOrders(false); // Carga inicial sem imprimir anteriores
 
     const interval = setInterval(() => {
@@ -297,6 +317,11 @@ export default function AdminPage() {
       if (e.key === "nice_neighborhoods" && e.newValue) {
         try {
           setNeighborhoods(JSON.parse(e.newValue));
+        } catch (err) {}
+      }
+      if (e.key === "nice_custom_coupons" && e.newValue) {
+        try {
+          setCoupons(JSON.parse(e.newValue));
         } catch (err) {}
       }
     };
@@ -654,6 +679,13 @@ export default function AdminPage() {
       localStorage.setItem("nice_custom_coupons", JSON.stringify(updated));
       window.dispatchEvent(new Event("storage"));
     } catch (e) {}
+
+    // Sincroniza imediatamente com o servidor/API
+    fetch("/api/coupons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ coupons: updated }),
+    }).catch((e) => console.warn("Erro ao salvar cupons na API:", e));
   };
 
   // Salvar pedido balcão gerado no PDV

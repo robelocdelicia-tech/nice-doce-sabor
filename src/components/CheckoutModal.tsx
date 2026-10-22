@@ -58,23 +58,6 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponMessage, setCouponMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  useEffect(() => {
-    try {
-      const savedNh = localStorage.getItem("nice_neighborhoods");
-      if (savedNh) {
-        setNeighborhoods(JSON.parse(savedNh));
-      }
-      const activeCode = localStorage.getItem("nice_active_coupon");
-      if (activeCode) {
-        setCouponInput(activeCode);
-      }
-    } catch (e) {
-      console.error("Erro ao carregar dados locais:", e);
-    }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
   // Calcula a taxa de entrega e total geral com desconto de cupom
   const selectedNeighborhood = neighborhoods.find((n) => n.id === selectedNeighborhoodId);
   const deliveryFee = orderType === "delivery" ? (selectedNeighborhood?.delivery_fee || 0) : 0;
@@ -90,6 +73,12 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
     setCouponMessage(null);
 
     try {
+      let clientCoupons: Coupon[] = [];
+      try {
+        const saved = localStorage.getItem("nice_custom_coupons");
+        if (saved) clientCoupons = JSON.parse(saved);
+      } catch (e) {}
+
       const payload = {
         code,
         customer_phone: customerPhone ? cleanPhoneForWhatsApp(customerPhone) : undefined,
@@ -102,6 +91,7 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
         })),
         subtotal,
         delivery_fee: deliveryFee,
+        client_coupons: clientCoupons,
       };
 
       const res = await fetch("/api/coupons/validate", {
@@ -112,11 +102,12 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
 
       const data = await res.json();
       if (data.valid) {
+        const discountVal = Number(data.discount_amount ?? data.discount ?? 0);
         setAppliedCoupon(data.coupon);
-        setCouponDiscount(data.discount_amount);
+        setCouponDiscount(discountVal);
         setCouponMessage({
           type: "success",
-          text: `Cupom ${data.coupon.code} aplicado! Desconto de ${formatCurrency(data.discount_amount)}.`,
+          text: `Cupom ${data.coupon.code} aplicado! Desconto de ${formatCurrency(discountVal)}.`,
         });
         localStorage.setItem("nice_active_coupon", data.coupon.code);
       } else {
@@ -131,6 +122,29 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
     }
   };
 
+  useEffect(() => {
+    try {
+      const savedNh = localStorage.getItem("nice_neighborhoods");
+      if (savedNh) {
+        setNeighborhoods(JSON.parse(savedNh));
+      }
+      const activeCode = localStorage.getItem("nice_active_coupon");
+      if (activeCode) {
+        setCouponInput(activeCode);
+        handleApplyCoupon(activeCode);
+      }
+    } catch (e) {
+      console.error("Erro ao carregar dados locais:", e);
+    }
+  }, [isOpen]);
+
+  // Recálculo automático fluido se o carrinho mudar com cupom já aplicado
+  useEffect(() => {
+    if (appliedCoupon && isOpen) {
+      handleApplyCoupon(appliedCoupon.code);
+    }
+  }, [subtotal, deliveryFee, orderType]);
+
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
     setCouponDiscount(0);
@@ -138,6 +152,8 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
     setCouponInput("");
     localStorage.removeItem("nice_active_coupon");
   };
+
+  if (!isOpen) return null;
 
   // Calcula a antecedência máxima necessária entre todos os itens do carrinho
   const maxLeadTimeHours = items.reduce(
@@ -265,6 +281,7 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
         coupon_code: appliedCoupon?.code || null,
         coupon_discount: couponDiscount,
         discount: couponDiscount,
+        applied_coupon: appliedCoupon || null,
         total: grandTotal,
         payment_method: paymentMethod,
         payment_status: "pending",

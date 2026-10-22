@@ -101,6 +101,17 @@ export default function HomePage() {
           setCoupons(JSON.parse(savedCoupons));
         }
 
+        // Sincroniza com a API do servidor
+        fetch("/api/coupons")
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success && Array.isArray(data.coupons) && data.coupons.length > 0) {
+              setCoupons(data.coupons);
+              localStorage.setItem("nice_custom_coupons", JSON.stringify(data.coupons));
+            }
+          })
+          .catch((err) => console.warn("Aviso ao carregar cupons:", err));
+
         const savedOrders = localStorage.getItem("nice_orders");
         if (savedOrders) {
           setOrders(JSON.parse(savedOrders));
@@ -200,7 +211,9 @@ export default function HomePage() {
 
   // Cupom promocional ativo para exibição no cardápio
   const promoCoupon = useMemo(() => {
-    return coupons.find((c) => c.is_active && c.show_on_menu);
+    return coupons.find(
+      (c) => c.is_active && (c.show_on_menu !== false || c.show_banner !== false)
+    );
   }, [coupons]);
 
   // Aplicar cupom com 1 clique a partir da faixa

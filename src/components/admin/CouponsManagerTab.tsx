@@ -194,6 +194,13 @@ export function CouponsManagerTab({
     e.preventDefault();
     if (!code.trim()) return;
 
+    const targetIds =
+      scope === "category" && scopeCategoryId
+        ? [scopeCategoryId]
+        : scope === "product" && scopeProductIds.length > 0
+        ? scopeProductIds
+        : [];
+
     const newCoupon: Coupon = {
       id: editingCoupon ? editingCoupon.id : `coupon_${Date.now()}`,
       code: code.trim().toUpperCase(),
@@ -203,16 +210,26 @@ export function CouponsManagerTab({
       scope,
       scope_category_id: scopeCategoryId || undefined,
       scope_product_ids: scopeProductIds.length > 0 ? scopeProductIds : undefined,
+      target_ids: targetIds,
       min_order_value: minOrderValue ? parseFloat(minOrderValue) : undefined,
       max_discount_value: maxDiscountValue ? parseFloat(maxDiscountValue) : undefined,
+      max_discount_cap: maxDiscountValue ? parseFloat(maxDiscountValue) : undefined,
       start_date: startDate ? `${startDate}T00:00:00` : undefined,
       end_date: endDate ? `${endDate}T23:59:59` : undefined,
       usage_limit_total: usageLimitTotal ? parseInt(usageLimitTotal) : undefined,
+      max_uses: usageLimitTotal ? parseInt(usageLimitTotal) : undefined,
       usage_limit_per_customer: parseInt(usageLimitPerCustomer) || 1,
+      max_uses_per_customer: parseInt(usageLimitPerCustomer) || 1,
       first_purchase_only: firstPurchaseOnly,
+      first_order_only: firstPurchaseOnly,
       order_type_restriction: orderTypeRestriction,
+      order_type_allowed: orderTypeRestriction,
       show_on_menu: showOnMenu,
+      show_banner: showOnMenu,
       is_active: isActive,
+      uses_count: editingCoupon?.uses_count || 0,
+      revenue_generated: editingCoupon?.revenue_generated || 0,
+      total_discount_given: editingCoupon?.total_discount_given || 0,
       created_at: editingCoupon?.created_at || new Date().toISOString(),
     };
 
