@@ -1,4 +1,11 @@
-import { Store, Category, Product, Testimonial, PromoBanner } from "@/types";
+import { Store, Category, Product, Testimonial, PromoBanner, Coupon, BestSellersConfig, MediaAsset } from "@/types";
+
+export const DEFAULT_BEST_SELLERS_CONFIG: BestSellersConfig = {
+  mode: "auto",
+  pinned_product_ids: ["p-vulcao", "p-bolo-no-pote", "p-salgados-porcao", "p-combo-festa"],
+  limit: 6,
+  period: "30d",
+};
 
 export const DEFAULT_STORE: Store = {
   id: "nice-doce-sabor-store",
@@ -29,6 +36,8 @@ export const DEFAULT_STORE: Store = {
   pix_key: "81988896169",
   pix_beneficiary_name: "Eunice Pereira",
   pix_city: "Recife",
+  best_sellers_config: DEFAULT_BEST_SELLERS_CONFIG,
+  stock_display_mode: "hide",
   whatsapp_status_templates: {
     ready_for_pickup:
       "Olá *{customer_name}*! 💕\nSeu pedido *#{order_number}* na *Nice Doce Sabor* já está prontinho para retirada!\n\n📍 *Local de Retirada:* {pickup_address}\nQualquer dúvida estamos à disposição!",
@@ -735,4 +744,95 @@ export const DEFAULT_PROMO_BANNERS: PromoBanner[] = [
     sort_order: 4,
   },
 ];
+
+export const DEFAULT_COUPONS: Coupon[] = [
+  {
+    id: "cupom-nice10",
+    code: "NICE10",
+    name: "Boas-Vindas 10% OFF",
+    discount_type: "percent",
+    discount_value: 10,
+    scope: "all",
+    min_order_value: 30.0,
+    max_discount_cap: 25.0,
+    uses_count: 8,
+    max_uses: 200,
+    max_uses_per_customer: 2,
+    first_order_only: false,
+    order_type_allowed: "all",
+    is_active: true,
+    show_banner: true,
+    banner_text: "🎁 Use o cupom NICE10 e ganhe 10% OFF em pedidos acima de R$ 30!",
+    revenue_generated: 480.0,
+    total_discount_given: 48.0,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: "cupom-doce5",
+    code: "DOCE5",
+    name: "R$ 5 OFF em Doces e Bolos",
+    discount_type: "fixed",
+    discount_value: 5.0,
+    scope: "category",
+    target_ids: ["cat-doces", "cat-bolo-pote"],
+    min_order_value: 25.0,
+    uses_count: 5,
+    max_uses: 100,
+    max_uses_per_customer: 1,
+    first_order_only: false,
+    order_type_allowed: "all",
+    is_active: true,
+    show_banner: false,
+    banner_text: "R$ 5 de desconto nos doces artesanais!",
+    revenue_generated: 165.0,
+    total_discount_given: 25.0,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: "cupom-festagratis",
+    code: "FESTAGRATIS",
+    name: "Frete Grátis em Kits Festa",
+    discount_type: "fixed",
+    discount_value: 0,
+    scope: "delivery",
+    target_ids: ["cat-kits"],
+    min_order_value: 99.0,
+    uses_count: 2,
+    max_uses: 50,
+    max_uses_per_customer: 1,
+    first_order_only: false,
+    order_type_allowed: "delivery",
+    is_active: true,
+    show_banner: true,
+    banner_text: "🚚 Frete Grátis em qualquer Kit Festa com o cupom FESTAGRATIS!",
+    revenue_generated: 199.98,
+    total_discount_given: 24.0,
+    created_at: new Date().toISOString(),
+  },
+];
+
+export const DEFAULT_MEDIA_ASSETS: MediaAsset[] = [
+  { id: "m-vulcao-real", url: "/products/real/vulcao.jpg", title: "Bolo Vulcão (Real)", source: "product", product_name: "Vulcão" },
+  { id: "m-vulcao-ai", url: "/products/vulcao_ai.jpg", title: "Bolo Vulcão Gourmet", source: "ai_studio", product_name: "Vulcão" },
+  { id: "m-bolo-pote-real", url: "/products/real/bolo_pote.jpg", title: "Bolo no Pote (Real)", source: "product", product_name: "Bolo no Pote" },
+  { id: "m-bolo-pote-ai", url: "/products/bolo_pote_ai.jpg", title: "Bolo no Pote Estúdio", source: "ai_studio", product_name: "Bolo no Pote" },
+  { id: "m-bombom-uva-real", url: "/products/real/bombom_uva.jpg", title: "Bombom de Uva (Real)", source: "product", product_name: "Bombom de Uva" },
+  { id: "m-bombom-uva-ai", url: "/products/bombom_uva_ai.jpg", title: "Bombom de Uva Luxo", source: "ai_studio", product_name: "Bombom de Uva" },
+  { id: "m-bombom-brownie", url: "/products/real/bombom_brownie.jpg", title: "Bombom de Brownie (Real)", source: "product", product_name: "Bombom de Brownie" },
+  { id: "m-brownies-real", url: "/products/real/brownies.jpg", title: "Brownies de Cacau (Real)", source: "product", product_name: "Brownie Tradicional" },
+  { id: "m-brownies-ai", url: "/products/brownies_ai.jpg", title: "Brownies Recheados", source: "ai_studio", product_name: "Brownie Recheado" },
+  { id: "m-cone-real", url: "/products/real/cone_trufado.jpg", title: "Cone Trufado (Real)", source: "product", product_name: "Cone Trufado" },
+  { id: "m-cone-ai", url: "/products/cone_trufado_ai.jpg", title: "Cone Trufado Estúdio", source: "ai_studio", product_name: "Cone Trufado" },
+  { id: "m-torta-abacaxi", url: "/products/real/torta_abacaxi.jpg", title: "Torta de Abacaxi (Real)", source: "product", product_name: "Torta de Abacaxi" },
+  { id: "m-fatia-bolo", url: "/products/fatia_bolo_ai.jpg", title: "Fatia de Bolo de Festa", source: "ai_studio", product_name: "Fatia de Bolo" },
+  { id: "m-pudim", url: "/products/pudim_ai.jpg", title: "Pudim Tradicional", source: "ai_studio", product_name: "Pudim" },
+  { id: "m-salgados-ai", url: "/products/salgados_festa_ai.jpg", title: "Salgados de Festa Dourados", source: "ai_studio", product_name: "Salgados de Festa" },
+  { id: "m-empada-frango", url: "/products/real/empada_frango.jpg", title: "Empada de Frango (Real)", source: "product", product_name: "Empada de Frango" },
+  { id: "m-empada-charque", url: "/products/real/empada_charque.jpg", title: "Empada de Charque (Real)", source: "product", product_name: "Empada de Charque" },
+  { id: "m-empadao-frango", url: "/products/real/empadao_frango.jpg", title: "Empadão de Frango (Real)", source: "product", product_name: "Empadão de Frango" },
+  { id: "m-kit-festa", url: "/products/kit_festa_ai.jpg", title: "Kit Festa Completo", source: "ai_studio", product_name: "Kit Festa" },
+  { id: "m-sucos-polpa", url: "/products/sucos_polpa_ai.jpg", title: "Sucos Naturais da Polpa", source: "ai_studio", product_name: "Sucos da Polpa" },
+  { id: "m-logo", url: "/logo.jpg", title: "Logo Oficial Nice Doce Sabor", source: "upload" },
+];
+
 

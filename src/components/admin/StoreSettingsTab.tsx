@@ -267,6 +267,71 @@ export function StoreSettingsTab({ store, onSaveStore }: StoreSettingsTabProps) 
           </div>
         </div>
 
+        {/* 4. CONTROLE DE EXIBIÇÃO DE ESTOQUE / ITENS ESGOTADOS */}
+        <div className="bg-white rounded-3xl p-6 border border-pink-100 shadow-sm space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b border-pink-50">
+            <Settings className="w-5 h-5 text-nice-pink" />
+            <div>
+              <h3 className="font-bold text-nice-wine text-base">
+                Comportamento de Itens Esgotados / Pausados
+              </h3>
+              <p className="text-xs text-gray-500">
+                Escolha como os produtos pausados aparecem para os clientes no cardápio público
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <label
+              className={`p-4 rounded-2xl border cursor-pointer transition flex items-start gap-3 ${
+                formData.stock_display_mode !== "sold_out"
+                  ? "bg-nice-pink-light/60 border-nice-pink shadow-sm"
+                  : "bg-white border-pink-100 hover:border-pink-200"
+              }`}
+            >
+              <input
+                type="radio"
+                name="stock_display_mode"
+                checked={formData.stock_display_mode !== "sold_out"}
+                onChange={() => handleChange("stock_display_mode", "hide")}
+                className="mt-0.5 text-nice-pink focus:ring-nice-pink"
+              />
+              <div>
+                <span className="font-bold text-nice-wine block text-sm">
+                  Ocultar Totalmente (Padrão)
+                </span>
+                <span className="text-gray-500 text-[11px] mt-0.5 block">
+                  Assim que você pausar um produto ou todos os sabores dele, ele desaparece do cardápio imediatamente.
+                </span>
+              </div>
+            </label>
+
+            <label
+              className={`p-4 rounded-2xl border cursor-pointer transition flex items-start gap-3 ${
+                formData.stock_display_mode === "sold_out"
+                  ? "bg-nice-pink-light/60 border-nice-pink shadow-sm"
+                  : "bg-white border-pink-100 hover:border-pink-200"
+              }`}
+            >
+              <input
+                type="radio"
+                name="stock_display_mode"
+                checked={formData.stock_display_mode === "sold_out"}
+                onChange={() => handleChange("stock_display_mode", "sold_out")}
+                className="mt-0.5 text-nice-pink focus:ring-nice-pink"
+              />
+              <div>
+                <span className="font-bold text-nice-wine block text-sm">
+                  Mostrar como Esgotado
+                </span>
+                <span className="text-gray-500 text-[11px] mt-0.5 block">
+                  O produto continua visível com um selo cinza "Esgotado por hoje", mas sem botão de adicionar ao carrinho.
+                </span>
+              </div>
+            </label>
+          </div>
+        </div>
+
         {/* BOTÕES DE AÇÃO */}
         <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
           <button

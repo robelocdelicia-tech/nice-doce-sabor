@@ -17,7 +17,10 @@ import {
   Banknote,
   QrCode,
   Truck,
+  Tag,
+  Loader2,
 } from "lucide-react";
+import { Coupon } from "@/types";
 
 interface CheckoutModalProps {
   store: Store;
@@ -48,23 +51,93 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
   const [complement, setComplement] = useState("");
   const [reference, setReference] = useState("");
 
+  // Estados de Cupom de Desconto
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponMessage, setCouponMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
   useEffect(() => {
     try {
       const savedNh = localStorage.getItem("nice_neighborhoods");
       if (savedNh) {
         setNeighborhoods(JSON.parse(savedNh));
       }
+      const activeCode = localStorage.getItem("nice_active_coupon");
+      if (activeCode) {
+        setCouponInput(activeCode);
+      }
     } catch (e) {
-      console.error("Erro ao carregar bairros:", e);
+      console.error("Erro ao carregar dados locais:", e);
     }
-  }, []);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  // Calcula a taxa de entrega e total geral
+  // Calcula a taxa de entrega e total geral com desconto de cupom
   const selectedNeighborhood = neighborhoods.find((n) => n.id === selectedNeighborhoodId);
   const deliveryFee = orderType === "delivery" ? (selectedNeighborhood?.delivery_fee || 0) : 0;
-  const grandTotal = subtotal + deliveryFee;
+  const grandTotal = Math.max(0, subtotal - couponDiscount + deliveryFee);
+
+  const handleApplyCoupon = async (codeToValidate?: string) => {
+    const code = (codeToValidate || couponInput).trim().toUpperCase();
+    if (!code) {
+      setCouponMessage({ type: "error", text: "Digite o código do cupom." });
+      return;
+    }
+    setCouponLoading(true);
+    setCouponMessage(null);
+
+    try {
+      const payload = {
+        code,
+        customer_phone: customerPhone ? cleanPhoneForWhatsApp(customerPhone) : undefined,
+        order_type: orderType,
+        items: items.map((i) => ({
+          product_id: i.product.id,
+          category_id: i.product.category_id,
+          quantity: i.quantity,
+          total_price: i.total_price,
+        })),
+        subtotal,
+        delivery_fee: deliveryFee,
+      };
+
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (data.valid) {
+        setAppliedCoupon(data.coupon);
+        setCouponDiscount(data.discount_amount);
+        setCouponMessage({
+          type: "success",
+          text: `Cupom ${data.coupon.code} aplicado! Desconto de ${formatCurrency(data.discount_amount)}.`,
+        });
+        localStorage.setItem("nice_active_coupon", data.coupon.code);
+      } else {
+        setAppliedCoupon(null);
+        setCouponDiscount(0);
+        setCouponMessage({ type: "error", text: data.message || "Cupom inválido ou expirado." });
+      }
+    } catch (err) {
+      setCouponMessage({ type: "error", text: "Erro ao validar cupom. Tente novamente." });
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponDiscount(0);
+    setCouponMessage(null);
+    setCouponInput("");
+    localStorage.removeItem("nice_active_coupon");
+  };
 
   // Calcula a antecedência máxima necessária entre todos os itens do carrinho
   const maxLeadTimeHours = items.reduce(
@@ -126,6 +199,29 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
     setIsSubmitting(true);
 
     try {
+      // 1. Validação server-side de disponibilidade antes de fechar o pedido
+      try {
+        const availCheck = await fetch("/api/products/validate-availability", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: items.map((i) => ({
+              product_id: i.product.id,
+              variation_name: i.selected_variation?.name,
+            })),
+          }),
+        });
+        const availData = await availCheck.json();
+        if (!availData.valid) {
+          const names = (availData.unavailable_items || []).map((u: any) => u.name).join(", ");
+          setErrorMsg(`Atenção: Os seguintes itens esgotaram: ${names}. Por favor, ajuste seu pedido.`);
+          setIsSubmitting(false);
+          return;
+        }
+      } catch (availErr) {
+        console.warn("Validação remota indisponível, prosseguindo com validação local.");
+      }
+
       // Gera número de pedido sequencial amigável
       const randomSequentialNumber = Math.floor(1000 + Math.random() * 9000);
       const newOrderId = `order_${Date.now()}_${randomSequentialNumber}`;
@@ -151,22 +247,30 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
             }
           : null;
 
+      const cashTenderedVal = cashChangeFor ? parseFloat(cashChangeFor.replace(",", ".")) : null;
+      const changeDueVal = cashTenderedVal ? Math.max(0, cashTenderedVal - grandTotal) : null;
+
       const newOrder: Order = {
         id: newOrderId,
         order_number: randomSequentialNumber,
         customer_name: customerName.trim(),
         customer_phone: cleanPhoneForWhatsApp(customerPhone),
         order_type: orderType,
+        origin: "online",
         scheduled_for: pickupDate ? `${pickupDate}T${pickupTime}:00` : null,
         neighborhood_name: selectedNeighborhood?.name || null,
         delivery_address: deliveryAddressObj,
         delivery_fee: deliveryFee,
         subtotal: subtotal,
-        discount: 0,
+        coupon_code: appliedCoupon?.code || null,
+        coupon_discount: couponDiscount,
+        discount: couponDiscount,
         total: grandTotal,
         payment_method: paymentMethod,
         payment_status: "pending",
-        cash_change_for: cashChangeFor ? parseFloat(cashChangeFor.replace(",", ".")) : null,
+        cash_change_for: cashTenderedVal,
+        cash_tendered: cashTenderedVal,
+        change_due: changeDueVal,
         order_status: "received",
         notes: generalNotes.trim() || null,
         is_printed: false,
@@ -189,6 +293,9 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
       } catch (err) {
         console.warn("API de sincronização em segundo plano não respondeu, pedido persistido localmente.");
       }
+
+      // Limpa cupom ativo após fechar o pedido
+      localStorage.removeItem("nice_active_coupon");
 
       // Limpa carrinho e redireciona para a página de confirmação/PIX
       clearCart();
@@ -577,12 +684,85 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
             />
           </div>
 
+          {/* Seção de Cupom de Desconto */}
+          <div className="space-y-2 pt-2 border-t border-pink-100">
+            <label className="text-xs font-bold uppercase tracking-wider text-nice-wine flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5 text-nice-pink" />
+              <span>Tem cupom de desconto?</span>
+            </label>
+
+            {appliedCoupon ? (
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-emerald-50 border border-emerald-200">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs">
+                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  </span>
+                  <div>
+                    <span className="font-bold text-xs text-emerald-900 uppercase tracking-wide">
+                      {appliedCoupon.code}
+                    </span>
+                    <span className="text-[11px] text-emerald-700 block">
+                      Economia de {formatCurrency(couponDiscount)}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveCoupon}
+                  className="text-xs text-rose-500 hover:text-rose-700 font-semibold px-2 py-1"
+                >
+                  Remover
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Ex.: NICE10"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    className="flex-1 p-2.5 rounded-2xl border border-pink-200 text-xs sm:text-sm uppercase font-mono tracking-wider text-nice-wine placeholder-pink-300 focus:outline-none focus:ring-2 focus:ring-nice-pink/40"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleApplyCoupon()}
+                    disabled={couponLoading || !couponInput.trim()}
+                    className="px-4 py-2.5 rounded-2xl bg-nice-pink hover:bg-nice-pink-hover text-white text-xs font-bold transition disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {couponLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      "Aplicar"
+                    )}
+                  </button>
+                </div>
+
+                {couponMessage && (
+                  <p
+                    className={`text-xs ${
+                      couponMessage.type === "success" ? "text-emerald-600 font-medium" : "text-rose-600 font-medium"
+                    }`}
+                  >
+                    {couponMessage.text}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Resumo Financeiro */}
           <div className="p-4 bg-gradient-to-r from-nice-pink-light/60 to-pink-50 rounded-2xl border border-pink-100 space-y-1.5 text-xs">
             <div className="flex justify-between text-gray-600">
               <span>Subtotal ({items.length} itens)</span>
               <span>{formatCurrency(subtotal)}</span>
             </div>
+            {appliedCoupon && couponDiscount > 0 && (
+              <div className="flex justify-between text-emerald-700 font-semibold">
+                <span>Desconto ({appliedCoupon.code})</span>
+                <span>- {formatCurrency(couponDiscount)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-gray-600">
               <span>Taxa de Entrega</span>
               <span className={orderType === "delivery" && deliveryFee > 0 ? "text-nice-pink font-bold" : "text-emerald-700 font-semibold"}>

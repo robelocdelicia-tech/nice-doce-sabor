@@ -21,7 +21,7 @@ export function EditOrderModal({
   const [customerPhone, setCustomerPhone] = useState("");
   const [total, setTotal] = useState("");
   const [notes, setNotes] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"pix" | "cash" | "card">("pix");
+  const [paymentMethod, setPaymentMethod] = useState<"pix" | "cash" | "card" | "fiado">("pix");
   const [paymentStatus, setPaymentStatus] = useState<"pending" | "paid" | "refunded">("pending");
   const [orderStatus, setOrderStatus] = useState<Order["order_status"]>("received");
 

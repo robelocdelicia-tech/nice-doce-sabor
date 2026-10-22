@@ -104,13 +104,22 @@ export function CustomNoteModal({
             </button>
           </div>
 
-          <button
-            onClick={handleSave}
-            className="px-5 py-2.5 rounded-full bg-nice-pink hover:bg-nice-pink-hover text-white text-xs sm:text-sm font-bold shadow-md flex items-center gap-1.5 transition active:scale-95"
-          >
-            <Check className="w-4 h-4 stroke-[2.5]" />
-            <span>Adicionar ({formatCurrency(totalPrice)})</span>
-          </button>
+          {product.is_paused || (variation && variation.is_paused) ? (
+            <button
+              disabled
+              className="px-5 py-2.5 rounded-full bg-gray-300 text-gray-500 text-xs sm:text-sm font-bold cursor-not-allowed"
+            >
+              Item Esgotado
+            </button>
+          ) : (
+            <button
+              onClick={handleSave}
+              className="px-5 py-2.5 rounded-full bg-nice-pink hover:bg-nice-pink-hover text-white text-xs sm:text-sm font-bold shadow-md flex items-center gap-1.5 transition active:scale-95"
+            >
+              <Check className="w-4 h-4 stroke-[2.5]" />
+              <span>Adicionar ({formatCurrency(totalPrice)})</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -11,6 +11,7 @@ interface ProductCardProps {
   product: Product;
   onOpenImageModal: (imageSrc: string, title: string) => void;
   onOpenCustomModal: (product: Product, variation?: ProductVariation) => void;
+  isTopSeller?: boolean;
 }
 
 function FlavorThumbnail({
@@ -50,6 +51,7 @@ export function ProductCard({
   product,
   onOpenImageModal,
   onOpenCustomModal,
+  isTopSeller,
 }: ProductCardProps) {
   const { getItemQuantity, quickIncrement, quickDecrement } = useCart();
   const [imageIndex, setImageIndex] = useState(0);
@@ -92,7 +94,9 @@ export function ProductCard({
   const simpleQuantity = !hasFlavors ? getItemQuantity(product.id) : 0;
 
   return (
-    <div className="bg-white rounded-3xl p-4 sm:p-5 shadow-card-3d border border-pink-100 hover:border-pink-300 transition-all duration-300 flex flex-col justify-between">
+    <div className={`bg-white rounded-3xl p-4 sm:p-5 shadow-card-3d border transition-all duration-300 flex flex-col justify-between ${
+      product.is_paused ? "opacity-75 border-gray-200" : "border-pink-100 hover:border-pink-300"
+    }`}>
       <div>
         {/* Topo: Imagem com Abertura em Tela Cheia ao Tocar */}
         <div className="relative w-full aspect-[16/10] sm:aspect-[16/9] rounded-2xl overflow-hidden bg-pink-50 mb-3.5 group">
@@ -110,7 +114,9 @@ export function ProductCard({
               alt={product.name}
               fill
               sizes="(max-width: 640px) 100vw, 50vw"
-              className="object-cover group-hover:scale-105 transition-transform duration-500 cursor-pointer"
+              className={`object-cover group-hover:scale-105 transition-transform duration-500 cursor-pointer ${
+                product.is_paused ? "grayscale-[50%]" : ""
+              }`}
               onClick={() => onOpenImageModal(primaryImage, product.name)}
               onError={handleImageError}
               priority={false}
@@ -129,14 +135,27 @@ export function ProductCard({
             </button>
           )}
 
-          {/* Badge de Destaque */}
-          {product.badge && (
-            <div className="absolute top-2.5 left-2.5">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-gradient-to-r from-nice-pink to-pink-500 text-white shadow-sm">
-                {product.badge}
+          {/* Badge de Destaque, Mais Pedido ou Esgotado */}
+          <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 items-start">
+            {product.is_paused ? (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-gray-800 text-white shadow-sm">
+                Esgotado
               </span>
-            </div>
-          )}
+            ) : (
+              <>
+                {isTopSeller && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-md flex items-center gap-1">
+                    🔥 Mais Pedido
+                  </span>
+                )}
+                {product.badge && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-gradient-to-r from-nice-pink to-pink-500 text-white shadow-sm">
+                    {product.badge}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         {/* Nome do Produto e Descrição */}
@@ -177,12 +196,15 @@ export function ProductCard({
                   {group.flavors.map((flavor) => {
                     const flavorQty = getItemQuantity(product.id, flavor.name);
                     const flavorImg = flavor.image || primaryImage;
+                    const isFlavorPaused = flavor.is_paused || product.is_paused;
 
                     return (
                       <div
                         key={flavor.name}
                         className={`flex items-center justify-between p-2 sm:p-2.5 rounded-2xl border transition-all ${
-                          flavorQty > 0
+                          isFlavorPaused
+                            ? "bg-gray-50/80 border-gray-200 opacity-60"
+                            : flavorQty > 0
                             ? "bg-[#FFF0F7] border-nice-pink shadow-sm"
                             : "bg-[#FFFDFE] border-pink-100 hover:border-pink-200"
                         }`}
@@ -201,9 +223,16 @@ export function ProductCard({
                           />
 
                           <div className="min-w-0">
-                            <span className="font-semibold text-xs sm:text-sm text-nice-wine block truncate">
-                              {flavor.name}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-xs sm:text-sm text-nice-wine block truncate">
+                                {flavor.name}
+                              </span>
+                              {isFlavorPaused && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-gray-200 text-gray-600">
+                                  Esgotado
+                                </span>
+                              )}
+                            </div>
                             <span className="text-[11px] font-bold text-nice-pink">
                               {formatCurrency(flavor.price)}
                             </span>
@@ -212,7 +241,11 @@ export function ProductCard({
 
                         {/* Controles de Quantidade: [- qtd +] e Botão Obs */}
                         <div className="flex items-center gap-1.5 flex-shrink-0">
-                          {flavorQty === 0 ? (
+                          {isFlavorPaused ? (
+                            <span className="text-[11px] font-medium text-gray-400 italic px-2">
+                              Indisponível
+                            </span>
+                          ) : flavorQty === 0 ? (
                             <button
                               onClick={() => quickIncrement(product, flavor)}
                               className="px-3 py-1.5 rounded-full bg-nice-pink hover:bg-nice-pink-hover text-white text-xs font-bold shadow-sm flex items-center gap-1 transition active:scale-95"
@@ -245,13 +278,15 @@ export function ProductCard({
                           )}
 
                           {/* Botão de Observação Específica do Sabor */}
-                          <button
-                            onClick={() => onOpenCustomModal(product, flavor)}
-                            className="p-1.5 text-gray-400 hover:text-nice-pink hover:bg-pink-50 rounded-lg transition"
-                            title="Adicionar observação personalizada neste sabor"
-                          >
-                            <MessageSquarePlus className="w-4 h-4" />
-                          </button>
+                          {!isFlavorPaused && (
+                            <button
+                              onClick={() => onOpenCustomModal(product, flavor)}
+                              className="p-1.5 text-gray-400 hover:text-nice-pink hover:bg-pink-50 rounded-lg transition"
+                              title="Adicionar observação personalizada neste sabor"
+                            >
+                              <MessageSquarePlus className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -276,7 +311,11 @@ export function ProductCard({
           </div>
 
           <div className="flex items-center gap-2">
-            {simpleQuantity === 0 ? (
+            {product.is_paused ? (
+              <span className="px-3.5 py-1.5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">
+                Esgotado por hoje
+              </span>
+            ) : simpleQuantity === 0 ? (
               <button
                 onClick={() => quickIncrement(product, null)}
                 className="px-4 py-2 rounded-full bg-nice-pink hover:bg-nice-pink-hover text-white text-xs font-bold shadow-md flex items-center gap-1.5 transition active:scale-95"
@@ -306,13 +345,15 @@ export function ProductCard({
               </div>
             )}
 
-            <button
-              onClick={() => onOpenCustomModal(product)}
-              className="p-2 text-gray-400 hover:text-nice-pink hover:bg-pink-50 rounded-xl transition"
-              title="Adicionar observação especial neste item"
-            >
-              <MessageSquarePlus className="w-4 h-4" />
-            </button>
+            {!product.is_paused && (
+              <button
+                onClick={() => onOpenCustomModal(product)}
+                className="p-2 text-gray-400 hover:text-nice-pink hover:bg-pink-50 rounded-xl transition"
+                title="Adicionar observação especial neste item"
+              >
+                <MessageSquarePlus className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       )}

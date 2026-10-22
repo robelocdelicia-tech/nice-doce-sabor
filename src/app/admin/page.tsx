@@ -1,16 +1,33 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Order, Product, ProductVariation, Category, Store, Neighborhood, PromoBanner } from "@/types";
-import { DEFAULT_STORE, DEFAULT_CATEGORIES, DEFAULT_PRODUCTS, DEFAULT_PROMO_BANNERS } from "@/lib/constants";
+import {
+  Order,
+  Product,
+  ProductVariation,
+  Category,
+  Store,
+  Neighborhood,
+  PromoBanner,
+  Coupon,
+  BestSellersConfig,
+} from "@/types";
+import {
+  DEFAULT_STORE,
+  DEFAULT_CATEGORIES,
+  DEFAULT_PRODUCTS,
+  DEFAULT_PROMO_BANNERS,
+  DEFAULT_COUPONS,
+} from "@/lib/constants";
 import {
   formatCurrency,
   formatPhone,
   checkStoreStatus,
   generateCustomerStatusWhatsAppUrl,
 } from "@/lib/utils";
+import { calculateBestSellers, BestSellerItem } from "@/lib/bestSellers";
 import {
   Bell,
   Clock,
@@ -35,6 +52,15 @@ import {
   Wand2,
   Edit,
   Settings,
+  ShoppingBag,
+  Tag,
+  Flame,
+  ChevronDown,
+  ChevronUp,
+  Archive,
+  PauseCircle,
+  PlayCircle,
+  SlidersHorizontal,
 } from "lucide-react";
 import { ProductFormModal } from "@/components/admin/ProductFormModal";
 import { AIImageStudioModal } from "@/components/admin/AIImageStudioModal";
@@ -44,6 +70,9 @@ import { AdminAuthGuard } from "@/components/admin/AdminAuthGuard";
 import { PromoBannersManager } from "@/components/admin/PromoBannersManager";
 import { DeliveryManagerTab } from "@/components/admin/DeliveryManagerTab";
 import { StoreSettingsTab } from "@/components/admin/StoreSettingsTab";
+import { POSRegisterTab } from "@/components/admin/POSRegisterTab";
+import { CouponsManagerTab } from "@/components/admin/CouponsManagerTab";
+import { BestSellersConfigModal } from "@/components/admin/BestSellersConfigModal";
 
 function AdminHeaderLogo() {
   const [error, setError] = useState(false);
@@ -86,7 +115,7 @@ function AdminProductThumb({ src, alt }: { src: string; alt: string }) {
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<
-    "pedidos" | "produtos" | "banners" | "entregas" | "financeiro" | "config"
+    "pedidos" | "pdv" | "produtos" | "cupons" | "banners" | "entregas" | "financeiro" | "config"
   >("pedidos");
 
   const [store, setStore] = useState<Store>(DEFAULT_STORE);
@@ -94,14 +123,24 @@ export default function AdminPage() {
   const [products, setProducts] = useState<Product[]>(DEFAULT_PRODUCTS);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [banners, setBanners] = useState<PromoBanner[]>(DEFAULT_PROMO_BANNERS);
+  const [coupons, setCoupons] = useState<Coupon[]>(DEFAULT_COUPONS);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [autoPrintEnabled, setAutoPrintEnabled] = useState<boolean>(true);
   const [autoPrintToast, setAutoPrintToast] = useState<string>("");
 
-  // Filtros de pedidos
+  // Filtros de pedidos e origem (Online vs Balcão)
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>("all");
+  const [orderOriginFilter, setOrderOriginFilter] = useState<"all" | "online" | "balcao">("all");
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
+
+  // Estados de Pausa, Acordeão de Sabores e Exclusão / Arquivamento
+  const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(new Set());
+  const [deleteModalProduct, setDeleteModalProduct] = useState<Product | null>(null);
+
+  // Estados do Módulo Mais Vendidos
+  const [isBestSellersModalOpen, setIsBestSellersModalOpen] = useState(false);
+  const [bestSellersPeriod, setBestSellersPeriod] = useState<"7d" | "30d" | "month" | "all">("30d");
 
   // Importador em massa
   const [importText, setImportText] = useState("");
@@ -481,9 +520,120 @@ export default function AdminPage() {
     });
   };
 
-  // Excluir produto com persistência
-  const handleDeleteProduct = (productId: string) => {
-    if (!confirm("Tem certeza que deseja excluir este produto do cardápio?")) return;
+  // Pausar / Liberar Produto
+  const handleTogglePauseProduct = (productId: string, pauseUntilTomorrow: boolean = false) => {
+    setProducts((prev) => {
+      const now = new Date();
+      let pauseUntil: string | undefined = undefined;
+      if (pauseUntilTomorrow) {
+        const tomorrow = new Date(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(12, 0, 0, 0);
+        pauseUntil = tomorrow.toISOString();
+      }
+
+      const updated = prev.map((p) => {
+        if (p.id === productId) {
+          const nextPaused = !p.is_paused;
+          return {
+            ...p,
+            is_paused: nextPaused,
+            pause_until: nextPaused ? pauseUntil : undefined,
+          };
+        }
+        return p;
+      });
+
+      try {
+        localStorage.setItem("nice_custom_products", JSON.stringify(updated));
+        window.dispatchEvent(new Event("storage"));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
+  // Pausar / Liberar Sabor Específico
+  const handleTogglePauseVariation = (
+    productId: string,
+    variationName: string,
+    pauseUntilTomorrow: boolean = false
+  ) => {
+    setProducts((prev) => {
+      const now = new Date();
+      let pauseUntil: string | undefined = undefined;
+      if (pauseUntilTomorrow) {
+        const tomorrow = new Date(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(12, 0, 0, 0);
+        pauseUntil = tomorrow.toISOString();
+      }
+
+      const updated = prev.map((p) => {
+        if (p.id === productId && p.variations) {
+          const updatedVars = p.variations.map((v) => {
+            if (v.name === variationName) {
+              const nextPaused = !v.is_paused;
+              return {
+                ...v,
+                is_paused: nextPaused,
+                pause_until: nextPaused ? pauseUntil : undefined,
+              };
+            }
+            return v;
+          });
+          return { ...p, variations: updatedVars };
+        }
+        return p;
+      });
+
+      try {
+        localStorage.setItem("nice_custom_products", JSON.stringify(updated));
+        window.dispatchEvent(new Event("storage"));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
+  // Pausar / Liberar Categoria Inteira com 1 toque
+  const handleTogglePauseCategory = (categoryId: string) => {
+    setCategories((prev) => {
+      const updated = prev.map((c) => (c.id === categoryId ? { ...c, is_paused: !c.is_paused } : c));
+      try {
+        localStorage.setItem("nice_custom_categories", JSON.stringify(updated));
+        window.dispatchEvent(new Event("storage"));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
+  // Alternar expansão do acordeão de sabores
+  const toggleExpandProduct = (productId: string) => {
+    setExpandedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  };
+
+  // Arquivar Produto (Recomendado - não quebra o histórico de pedidos)
+  const handleArchiveProduct = (productId: string) => {
+    setProducts((prev) => {
+      const updated = prev.map((p) => (p.id === productId ? { ...p, is_archived: true } : p));
+      try {
+        localStorage.setItem("nice_custom_products", JSON.stringify(updated));
+        window.dispatchEvent(new Event("storage"));
+      } catch (e) {}
+      return updated;
+    });
+    setDeleteModalProduct(null);
+  };
+
+  // Excluir Produto Definitivamente
+  const handleDeleteProductPermanently = (productId: string) => {
     setProducts((prev) => {
       const updated = prev.filter((p) => p.id !== productId);
       try {
@@ -494,6 +644,36 @@ export default function AdminPage() {
       }
       return updated;
     });
+    setDeleteModalProduct(null);
+  };
+
+  // Salvar cupons atualizados
+  const handleSaveCoupons = (updated: Coupon[]) => {
+    setCoupons(updated);
+    try {
+      localStorage.setItem("nice_custom_coupons", JSON.stringify(updated));
+      window.dispatchEvent(new Event("storage"));
+    } catch (e) {}
+  };
+
+  // Salvar pedido balcão gerado no PDV
+  const handleSavePOSOrder = (newOrder: Order) => {
+    setOrders((prev) => {
+      const updated = [newOrder, ...prev];
+      localStorage.setItem("nice_orders", JSON.stringify(updated));
+      return updated;
+    });
+    fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newOrder),
+    }).catch((e) => console.warn("Erro ao sincronizar pedido balcão com servidor:", e));
+  };
+
+  // Salvar configuração de Mais Vendidos
+  const handleSaveBestSellersConfig = (config: BestSellersConfig) => {
+    const updatedStore = { ...store, best_sellers_config: config };
+    handleSaveStore(updatedStore);
   };
 
   // Aplicar imagem gerada por IA a um produto
@@ -663,19 +843,49 @@ export default function AdminPage() {
     alert("Financeiro zerado com sucesso! O backup em CSV foi baixado no seu computador.");
   };
 
-  // Métricas financeiras
-  const totalFaturamento = orders
-    .filter((o) => o.payment_status === "paid" || o.order_status !== "cancelled")
-    .reduce((sum, o) => sum + o.total, 0);
+  // Métricas financeiras com filtro de origem (Online vs Balcão)
+  const financeOrders = orders.filter((o) => {
+    if (orderOriginFilter !== "all") {
+      const orig = o.origin || "online";
+      if (orig !== orderOriginFilter) return false;
+    }
+    return true;
+  });
 
-  const totalPedidos = orders.length;
+  const validFinanceOrders = financeOrders.filter(
+    (o) => o.status !== "cancelado" && o.order_status !== "cancelled"
+  );
+
+  const totalFaturamentoBruto = validFinanceOrders.reduce(
+    (sum, o) => sum + (o.subtotal || o.total),
+    0
+  );
+
+  const totalDescontosConcedidos = validFinanceOrders.reduce(
+    (sum, o) => sum + (o.coupon_discount || o.manual_discount || o.discount || 0),
+    0
+  );
+
+  const totalFaturamento = validFinanceOrders.reduce((sum, o) => sum + o.total, 0);
+  const totalPedidos = validFinanceOrders.length;
   const ticketMedio = totalPedidos > 0 ? totalFaturamento / totalPedidos : 0;
-  const pedidosCancelados = orders.filter((o) => o.order_status === "cancelled").length;
+  const pedidosCancelados = financeOrders.filter(
+    (o) => o.status === "cancelado" || o.order_status === "cancelled"
+  ).length;
 
   const filteredOrders = orders.filter((o) => {
-    if (orderStatusFilter === "all") return true;
-    return o.order_status === orderStatusFilter;
+    if (orderStatusFilter !== "all" && o.order_status !== orderStatusFilter) return false;
+    if (orderOriginFilter !== "all") {
+      const orig = o.origin || "online";
+      if (orig !== orderOriginFilter) return false;
+    }
+    return true;
   });
+
+  // Ranking dos Mais Vendidos para a tela do financeiro
+  const rankingBestSellers = useMemo(() => {
+    return calculateBestSellers(orders, products, bestSellersPeriod, store.best_sellers_config);
+  }, [orders, products, bestSellersPeriod, store.best_sellers_config]);
 
   const storeStatus = checkStoreStatus(store);
 
@@ -807,6 +1017,18 @@ export default function AdminPage() {
           </button>
 
           <button
+            onClick={() => setActiveTab("pdv")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              activeTab === "pdv"
+                ? "bg-nice-pink text-white shadow-sm"
+                : "text-nice-wine/80 hover:bg-pink-50"
+            }`}
+          >
+            <ShoppingBag className="w-4 h-4" />
+            <span>Balcão (PDV)</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab("produtos")}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
               activeTab === "produtos"
@@ -816,6 +1038,23 @@ export default function AdminPage() {
           >
             <Package className="w-4 h-4" />
             <span>Produtos & Importador</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("cupons")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+              activeTab === "cupons"
+                ? "bg-nice-pink text-white shadow-sm"
+                : "text-nice-wine/80 hover:bg-pink-50"
+            }`}
+          >
+            <Tag className="w-4 h-4" />
+            <span>Cupons</span>
+            {coupons.filter((c) => c.is_active).length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-pink-100 text-nice-pink font-extrabold">
+                {coupons.filter((c) => c.is_active).length}
+              </span>
+            )}
           </button>
 
           <button
@@ -886,7 +1125,7 @@ export default function AdminPage() {
                 </p>
               </div>
 
-              {/* Ações e Filtro por status */}
+              {/* Ações e Filtro por status e origem */}
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setIsManualOrderOpen(true)}
@@ -897,13 +1136,26 @@ export default function AdminPage() {
                 </button>
 
                 <div className="flex items-center gap-1.5 bg-white border border-pink-200 px-2.5 py-1.5 rounded-xl shadow-sm">
+                  <span className="text-[11px] font-bold text-gray-500">Origem:</span>
+                  <select
+                    value={orderOriginFilter}
+                    onChange={(e) => setOrderOriginFilter(e.target.value as any)}
+                    className="text-xs font-bold text-nice-wine bg-transparent focus:outline-none"
+                  >
+                    <option value="all">Todas ({orders.length})</option>
+                    <option value="online">Online ({orders.filter((o) => (o.origin || "online") !== "balcao").length})</option>
+                    <option value="balcao">Balcão ({orders.filter((o) => o.origin === "balcao").length})</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-white border border-pink-200 px-2.5 py-1.5 rounded-xl shadow-sm">
                   <Filter className="w-3.5 h-3.5 text-gray-400" />
                   <select
                     value={orderStatusFilter}
                     onChange={(e) => setOrderStatusFilter(e.target.value)}
                     className="text-xs font-medium text-nice-wine bg-transparent focus:outline-none"
                   >
-                    <option value="all">Todos os Pedidos</option>
+                    <option value="all">Todos os Status</option>
                     <option value="received">Recebidos</option>
                     <option value="preparing">Em Preparo</option>
                     <option value="ready">Prontos p/ Retirada</option>
@@ -934,16 +1186,27 @@ export default function AdminPage() {
                     {/* Topo do Card: Número, Data e Status */}
                     <div>
                       <div className="flex items-center justify-between pb-3 border-b border-pink-50">
-                        <div>
-                          <span className="text-base font-extrabold text-nice-pink">
-                            #{order.order_number}
-                          </span>
-                          <span className="text-[10px] text-gray-400 block">
-                            {new Date(order.created_at).toLocaleTimeString("pt-BR", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <span className="text-base font-extrabold text-nice-pink">
+                              #{order.order_number}
+                            </span>
+                            <span className="text-[10px] text-gray-400 block">
+                              {new Date(order.created_at).toLocaleTimeString("pt-BR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                          {order.origin === "balcao" ? (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-purple-100 text-purple-800 border border-purple-200">
+                              Balcão
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-pink-100 text-nice-pink border border-pink-200">
+                              Online
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex flex-col items-end gap-1">
@@ -1079,6 +1342,20 @@ export default function AdminPage() {
         )}
 
         {/* ======================================================== */}
+        {/* ABA NOVO PEDIDO NO BALCÃO (PDV) */}
+        {/* ======================================================== */}
+        {activeTab === "pdv" && (
+          <POSRegisterTab
+            products={products}
+            categories={categories}
+            orders={orders}
+            onSaveOrder={handleSavePOSOrder}
+            store={store}
+            coupons={coupons}
+          />
+        )}
+
+        {/* ======================================================== */}
         {/* ABA 2: PRODUTOS & IMPORTADOR EM MASSA DO INSTAGRAM */}
         {/* ======================================================== */}
         {activeTab === "produtos" && (
@@ -1126,7 +1403,7 @@ export default function AdminPage() {
                     Produtos no Cardápio ({products.length} itens)
                   </h3>
                   <p className="text-xs text-gray-500">
-                    Gerencie fotos, preços e sabores de cada item da Nice Doce Sabor
+                    Gerencie disponibilidade, pause sabores e ajuste fotos e preços
                   </p>
                 </div>
 
@@ -1162,62 +1439,251 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                {products.map((p) => (
-                  <div
-                    key={p.id}
-                    className="flex items-center justify-between p-3 rounded-2xl border border-pink-100 bg-[#FFFDFE] hover:border-pink-200 transition text-xs"
-                  >
-                    <div className="flex items-center gap-3 min-w-0 pr-2">
-                      <AdminProductThumb
-                        src={p.images[0] || "/logo.jpg"}
-                        alt={p.name}
-                      />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-nice-wine text-sm truncate">{p.name}</span>
-                          {p.badge && (
-                            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-100 text-nice-pink">
-                              {p.badge}
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-gray-500 text-[11px] block truncate">{p.description}</span>
-                        {p.variations && p.variations.length > 0 && (
-                          <span className="inline-block text-[10px] text-nice-pink font-semibold bg-nice-pink-light px-2 py-0.5 rounded-md mt-0.5">
-                            {p.variations.length} sabores cadastrados
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <span className="font-extrabold text-nice-pink text-sm sm:text-base mr-1">
-                        {formatCurrency(p.base_price)}
+              {/* Pausa Rápida de Categorias Inteiras */}
+              <div className="bg-pink-50/60 p-3.5 rounded-2xl border border-pink-100 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="font-bold text-nice-wine text-xs block">
+                    Pausar / Liberar Categorias Inteiras:
+                  </span>
+                  <span className="text-[10px] text-gray-500">
+                    Pausar uma categoria esgota e oculta todos os produtos dela com 1 toque.
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {categories.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => handleTogglePauseCategory(c.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                        c.is_paused
+                          ? "bg-amber-100 text-amber-900 border border-amber-300"
+                          : "bg-white text-nice-wine border border-pink-200 hover:border-pink-300"
+                      }`}
+                    >
+                      {c.is_paused ? (
+                        <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
+                      ) : (
+                        <PlayCircle className="w-3.5 h-3.5 text-emerald-600" />
+                      )}
+                      <span>
+                        {c.name} {c.is_paused ? "(Pausada)" : ""}
                       </span>
-                      <button
-                        onClick={() => {
-                          setEditingProduct(p);
-                          setIsProductFormOpen(true);
-                        }}
-                        className="p-1.5 text-gray-400 hover:text-nice-pink hover:bg-pink-50 rounded-lg transition"
-                        title="Editar produto"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteProduct(p.id)}
-                        className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition"
-                        title="Excluir produto"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Lista dos Produtos com Chaves Rápidas de Pausa e Acordeão de Sabores */}
+              <div className="space-y-3">
+                {products.map((p) => {
+                  const hasFlavors = p.variations && p.variations.length > 0;
+                  const allFlavorsPaused =
+                    hasFlavors && p.variations.every((v) => v.is_paused);
+                  const isEffectivePaused = p.is_paused || allFlavorsPaused;
+                  const isExpanded = expandedProductIds.has(p.id);
+
+                  return (
+                    <div
+                      key={p.id}
+                      className={`rounded-2xl border transition-all text-xs overflow-hidden ${
+                        p.is_archived
+                          ? "bg-gray-100/70 border-gray-300 opacity-60"
+                          : isEffectivePaused
+                          ? "bg-amber-50/40 border-amber-200"
+                          : "bg-[#FFFDFE] border-pink-100 hover:border-pink-200"
+                      }`}
+                    >
+                      {/* Linha Principal do Produto */}
+                      <div className="flex flex-wrap items-center justify-between p-3 gap-2">
+                        <div className="flex items-center gap-3 min-w-0 pr-2">
+                          <AdminProductThumb
+                            src={p.images[0] || "/logo.jpg"}
+                            alt={p.name}
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-nice-wine text-sm truncate">
+                                {p.name}
+                              </span>
+                              {p.is_archived && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-gray-300 text-gray-700">
+                                  Arquivado
+                                </span>
+                              )}
+                              {allFlavorsPaused && !p.is_paused && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-200 text-amber-900">
+                                  Todos Sabores Esgotados
+                                </span>
+                              )}
+                              {p.badge && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-pink-100 text-nice-pink">
+                                  {p.badge}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-gray-500 text-[11px] block truncate">
+                              {p.description}
+                            </span>
+                            {hasFlavors && (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandProduct(p.id)}
+                                className="inline-flex items-center gap-1 text-[11px] font-bold text-nice-pink hover:text-nice-pink-hover mt-0.5"
+                              >
+                                <span>
+                                  {p.variations.filter((v) => !v.is_paused).length}/
+                                  {p.variations.length} sabores ativos
+                                </span>
+                                {isExpanded ? (
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                ) : (
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Controles de Pausa, Preço e Ações */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="font-extrabold text-nice-pink text-sm sm:text-base mr-1">
+                            {formatCurrency(p.base_price)}
+                          </span>
+
+                          {/* Chave Rápida de Pausa */}
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePauseProduct(p.id)}
+                              className={`px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 ${
+                                isEffectivePaused
+                                  ? "bg-amber-100 text-amber-900 border border-amber-300"
+                                  : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                              }`}
+                              title={
+                                isEffectivePaused
+                                  ? "Clique para liberar item no cardápio"
+                                  : "Clique para pausar item"
+                              }
+                            >
+                              {isEffectivePaused ? (
+                                <PauseCircle className="w-3.5 h-3.5 text-amber-700" />
+                              ) : (
+                                <PlayCircle className="w-3.5 h-3.5 text-emerald-700" />
+                              )}
+                              <span>{isEffectivePaused ? "Pausado" : "Disponível"}</span>
+                            </button>
+
+                            {!p.is_paused && (
+                              <button
+                                type="button"
+                                onClick={() => handleTogglePauseProduct(p.id, true)}
+                                className="px-2 py-1 text-[10px] text-gray-500 hover:text-nice-wine hover:bg-pink-50 rounded-lg transition"
+                                title="Pausar apenas até amanhã às 12h (retorna sozinho)"
+                              >
+                                Até amanhã
+                              </button>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              setEditingProduct(p);
+                              setIsProductFormOpen(true);
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-nice-wine hover:bg-pink-50 rounded-lg transition"
+                            title="Editar produto completo"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteModalProduct(p)}
+                            className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition"
+                            title="Opções de exclusão / arquivamento"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Acordeão de Sabores / Variações */}
+                      {hasFlavors && isExpanded && (
+                        <div className="border-t border-pink-100 bg-pink-50/30 p-3 space-y-1.5 pl-6 sm:pl-16">
+                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">
+                            Gerenciar Disponibilidade por Sabor:
+                          </span>
+                          {p.variations.map((v) => {
+                            const isFlavorPaused = Boolean(v.is_paused);
+                            return (
+                              <div
+                                key={v.name}
+                                className={`flex items-center justify-between p-2 rounded-xl border text-xs ${
+                                  isFlavorPaused
+                                    ? "bg-gray-100 border-gray-200 text-gray-500"
+                                    : "bg-white border-pink-100 text-nice-wine"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold">{v.name}</span>
+                                  <span className="text-[11px] font-bold text-nice-pink">
+                                    {formatCurrency(v.price)}
+                                  </span>
+                                  {isFlavorPaused && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-amber-200 text-amber-900">
+                                      Esgotado
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTogglePauseVariation(p.id, v.name)}
+                                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition ${
+                                      isFlavorPaused
+                                        ? "bg-amber-100 text-amber-900 border border-amber-300"
+                                        : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                    }`}
+                                  >
+                                    {isFlavorPaused ? "Pausado" : "Disponível"}
+                                  </button>
+
+                                  {!isFlavorPaused && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleTogglePauseVariation(p.id, v.name, true)}
+                                      className="px-2 py-0.5 text-[10px] text-gray-500 hover:text-nice-wine hover:bg-pink-50 rounded"
+                                      title="Pausar sabor até amanhã"
+                                    >
+                                      Até amanhã
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* ABA GESTÃO DE CUPONS DE DESCONTO */}
+        {/* ======================================================== */}
+        {activeTab === "cupons" && (
+          <CouponsManagerTab
+            coupons={coupons}
+            onSaveCoupons={handleSaveCoupons}
+            orders={orders}
+            categories={categories}
+            products={products}
+          />
         )}
 
         {/* ======================================================== */}
@@ -1228,6 +1694,7 @@ export default function AdminPage() {
             banners={banners}
             onSaveBanners={handleSaveBanners}
             categories={categories}
+            products={products}
           />
         )}
 
@@ -1248,43 +1715,221 @@ export default function AdminPage() {
         {/* ======================================================== */}
         {activeTab === "financeiro" && (
           <div className="space-y-6">
-            {/* Cards de Métricas */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-              <div className="bg-white p-4 rounded-3xl border border-pink-100 shadow-sm">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide block">
-                  Faturamento Total
+            {/* Barra de Filtro por Origem (Online vs Balcão) */}
+            <div className="bg-white p-4 rounded-3xl border border-pink-100 shadow-sm flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-nice-wine text-base">Painel Financeiro & Vendas</h3>
+                <span className="text-xs text-gray-500">
+                  Acompanhe faturamento bruto, descontos concedidos, líquido e ranking dos mais vendidos
                 </span>
-                <span className="text-lg sm:text-2xl font-extrabold text-nice-pink mt-1 block">
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-pink-50/60 border border-pink-200 p-1 rounded-2xl">
+                {[
+                  { id: "all", label: "Todas as Origens" },
+                  { id: "online", label: "Cardápio Online" },
+                  { id: "balcao", label: "Balcão (PDV)" },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setOrderOriginFilter(f.id as any)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                      orderOriginFilter === f.id
+                        ? "bg-nice-pink text-white shadow-sm"
+                        : "text-nice-wine hover:bg-pink-100"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Cards de Métricas Financeiras */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="bg-white p-4 rounded-3xl border border-pink-100 shadow-sm">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide block">
+                  Faturamento Bruto
+                </span>
+                <span className="text-base sm:text-xl font-extrabold text-gray-700 mt-1 block">
+                  {formatCurrency(totalFaturamentoBruto)}
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-3xl border border-emerald-100 shadow-sm">
+                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide block">
+                  Descontos (Cupons)
+                </span>
+                <span className="text-base sm:text-xl font-extrabold text-emerald-600 mt-1 block">
+                  - {formatCurrency(totalDescontosConcedidos)}
+                </span>
+              </div>
+
+              <div className="bg-white p-4 rounded-3xl border border-pink-200 shadow-sm bg-gradient-to-tr from-pink-50/50 to-white">
+                <span className="text-[10px] font-bold text-nice-pink uppercase tracking-wide block">
+                  Faturamento Líquido
+                </span>
+                <span className="text-base sm:text-xl font-extrabold text-nice-pink mt-1 block">
                   {formatCurrency(totalFaturamento)}
                 </span>
               </div>
 
               <div className="bg-white p-4 rounded-3xl border border-pink-100 shadow-sm">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide block">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide block">
                   Total de Pedidos
                 </span>
-                <span className="text-lg sm:text-2xl font-extrabold text-nice-wine mt-1 block">
+                <span className="text-base sm:text-xl font-extrabold text-nice-wine mt-1 block">
                   {totalPedidos}
                 </span>
               </div>
 
               <div className="bg-white p-4 rounded-3xl border border-pink-100 shadow-sm">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide block">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide block">
                   Ticket Médio
                 </span>
-                <span className="text-lg sm:text-2xl font-extrabold text-nice-wine mt-1 block">
+                <span className="text-base sm:text-xl font-extrabold text-nice-wine mt-1 block">
                   {formatCurrency(ticketMedio)}
                 </span>
               </div>
 
-              <div className="bg-white p-4 rounded-3xl border border-pink-100 shadow-sm">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide block">
+              <div className="bg-white p-4 rounded-3xl border border-rose-100 shadow-sm">
+                <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wide block">
                   Cancelados
                 </span>
-                <span className="text-lg sm:text-2xl font-extrabold text-rose-600 mt-1 block">
+                <span className="text-base sm:text-xl font-extrabold text-rose-600 mt-1 block">
                   {pedidosCancelados}
                 </span>
               </div>
+            </div>
+
+            {/* RANKING DOS PRODUTOS MAIS VENDIDOS NO FINANCEIRO */}
+            <div className="bg-white rounded-3xl p-6 border border-pink-100 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
+                    <Flame className="w-4 h-4 fill-amber-500 text-amber-500" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-nice-wine text-base sm:text-lg">
+                      Ranking dos Produtos Mais Vendidos
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      Calculado automaticamente a partir dos pedidos reais (ignorando cancelados)
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center bg-pink-50 border border-pink-200 rounded-xl p-0.5 text-xs font-semibold">
+                    {[
+                      { id: "7d", label: "7 dias" },
+                      { id: "30d", label: "30 dias" },
+                      { id: "month", label: "Mês atual" },
+                      { id: "all", label: "Histórico" },
+                    ].map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setBestSellersPeriod(p.id as any)}
+                        className={`px-2.5 py-1 rounded-lg transition ${
+                          bestSellersPeriod === p.id
+                            ? "bg-nice-wine text-white shadow-sm"
+                            : "text-gray-600 hover:text-nice-wine"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsBestSellersModalOpen(true)}
+                    className="px-3.5 py-1.5 rounded-xl bg-nice-pink hover:bg-nice-pink-hover text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition active:scale-95"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    <span>Configurar Exibição</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tabela de Mais Vendidos */}
+              {rankingBestSellers.length === 0 ? (
+                <p className="text-center text-gray-400 py-8 text-xs">
+                  Nenhum pedido registrado no período selecionado para compor o ranking.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-pink-50/50 text-gray-500 uppercase text-[10px] tracking-wider border-b border-pink-100">
+                      <tr>
+                        <th className="py-2.5 px-3">Posição</th>
+                        <th className="py-2.5 px-3">Produto</th>
+                        <th className="py-2.5 px-3 text-center">Qtd. Vendida</th>
+                        <th className="py-2.5 px-3 text-right">Faturamento</th>
+                        <th className="py-2.5 px-3 text-right">Preço Médio</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-pink-50">
+                      {rankingBestSellers.map((item: BestSellerItem, idx: number) => {
+                        const prod = item.product;
+                        const avgPrice =
+                          item.total_quantity > 0 ? item.total_revenue / item.total_quantity : 0;
+
+                        return (
+                          <tr key={item.product_id} className="hover:bg-pink-50/20 transition">
+                            <td className="py-3 px-3 font-extrabold text-nice-pink">
+                              <span
+                                className={`w-6 h-6 rounded-full inline-flex items-center justify-center text-xs ${
+                                  idx === 0
+                                    ? "bg-amber-400 text-nice-wine shadow-sm"
+                                    : idx === 1
+                                    ? "bg-gray-200 text-gray-700"
+                                    : idx === 2
+                                    ? "bg-amber-700/20 text-amber-800"
+                                    : "text-gray-400"
+                                }`}
+                              >
+                                #{idx + 1}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="relative w-9 h-9 rounded-xl overflow-hidden bg-pink-50 flex-shrink-0 border border-pink-100">
+                                  <Image
+                                    src={prod?.images?.[0] || "/logo.jpg"}
+                                    alt={item.name}
+                                    fill
+                                    className="object-cover"
+                                  />
+                                </div>
+                                <div>
+                                  <span className="font-bold text-nice-wine block">{item.name}</span>
+                                  {prod?.category_id && (
+                                    <span className="text-[10px] text-gray-400">
+                                      {categories.find((c) => c.id === prod.category_id)?.name}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-center font-extrabold text-nice-wine text-sm">
+                              {item.total_quantity} un
+                            </td>
+                            <td className="py-3 px-3 text-right font-extrabold text-nice-pink text-sm">
+                              {formatCurrency(item.total_revenue)}
+                            </td>
+                            <td className="py-3 px-3 text-right text-gray-500 font-semibold">
+                              {formatCurrency(avgPrice)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             {/* Ações de Relatório e Backup */}
@@ -1453,6 +2098,67 @@ export default function AdminPage() {
         order={editingOrder}
         onSaveOrder={handleSaveEditedOrder}
       />
+
+      {/* MODAL DE CONFIGURAÇÃO DE MAIS VENDIDOS */}
+      <BestSellersConfigModal
+        isOpen={isBestSellersModalOpen}
+        onClose={() => setIsBestSellersModalOpen(false)}
+        products={products}
+        currentConfig={store.best_sellers_config}
+        onSaveConfig={handleSaveBestSellersConfig}
+      />
+
+      {/* MODAL DE ARQUIVAMENTO / EXCLUSÃO DE PRODUTO */}
+      {deleteModalProduct && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border border-pink-100 text-xs">
+            <div className="flex items-center gap-2.5 text-nice-wine">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base">Gerenciar Produto: {deleteModalProduct.name}</h3>
+                <p className="text-gray-500 text-[11px]">Escolha como deseja remover este item</p>
+              </div>
+            </div>
+
+            <p className="text-gray-600 leading-relaxed">
+              Você pode <strong className="text-nice-wine">Arquivar</strong> o produto (ocultando do cardápio sem quebrar relatórios e comandas antigas) ou <strong className="text-rose-600">Excluir Definitivamente</strong>.
+            </p>
+
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={() => handleArchiveProduct(deleteModalProduct.id)}
+                className="w-full py-3 px-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold flex items-center justify-center gap-2 shadow-sm transition active:scale-95"
+              >
+                <Archive className="w-4 h-4" />
+                <span>Arquivar Produto (Recomendado)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm("Tem certeza absoluta? Esta exclusão é definitiva e não pode ser desfeita.")) {
+                    handleDeleteProductPermanently(deleteModalProduct.id);
+                  }
+                }}
+                className="w-full py-2.5 px-4 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 transition"
+              >
+                Excluir Definitivamente do Sistema
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDeleteModalProduct(null)}
+                className="w-full py-2 rounded-2xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* NOTIFICAÇÃO FLUTUANTE DE IMPRESSÃO AUTOMÁTICA */}
       {autoPrintToast && (

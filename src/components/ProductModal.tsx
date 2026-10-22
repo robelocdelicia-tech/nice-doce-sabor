@@ -25,7 +25,8 @@ export function ProductModal({ product, onClose }: ProductModalProps) {
   useEffect(() => {
     if (product) {
       if (product.variations && product.variations.length > 0) {
-        setSelectedVariation(product.variations[0]);
+        const available = product.variations.find((v) => !v.is_paused);
+        setSelectedVariation(available || product.variations[0]);
       } else {
         setSelectedVariation(null);
       }
@@ -157,12 +158,17 @@ export function ProductModal({ product, onClose }: ProductModalProps) {
               <div className="space-y-2">
                 {product.variations.map((v) => {
                   const isSelected = selectedVariation?.name === v.name;
+                  const isPaused = v.is_paused || product.is_paused;
                   return (
                     <button
                       key={v.name}
-                      onClick={() => setSelectedVariation(v)}
+                      type="button"
+                      disabled={isPaused}
+                      onClick={() => !isPaused && setSelectedVariation(v)}
                       className={`w-full flex items-center justify-between p-3 rounded-2xl border text-xs sm:text-sm transition-all duration-200 ${
-                        isSelected
+                        isPaused
+                          ? "border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed"
+                          : isSelected
                           ? "border-nice-pink bg-nice-pink-light/60 font-semibold shadow-sm text-nice-wine"
                           : "border-pink-100 bg-white text-gray-700 hover:border-pink-300"
                       }`}
@@ -170,14 +176,25 @@ export function ProductModal({ product, onClose }: ProductModalProps) {
                       <div className="flex items-center gap-2.5">
                         <div
                           className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                            isSelected ? "border-nice-pink bg-nice-pink text-white" : "border-gray-300"
+                            isPaused
+                              ? "border-gray-300 bg-gray-200"
+                              : isSelected
+                              ? "border-nice-pink bg-nice-pink text-white"
+                              : "border-gray-300"
                           }`}
                         >
-                          {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                          {isSelected && !isPaused && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                         </div>
-                        <span>{v.name}</span>
+                        <span className={isPaused ? "line-through text-gray-400" : ""}>{v.name}</span>
+                        {isPaused && (
+                          <span className="text-[10px] font-bold text-gray-500 uppercase px-1.5 py-0.2 rounded bg-gray-200">
+                            Esgotado
+                          </span>
+                        )}
                       </div>
-                      <span className="font-bold text-nice-pink">{formatCurrency(v.price)}</span>
+                      <span className={`font-bold ${isPaused ? "text-gray-400" : "text-nice-pink"}`}>
+                        {formatCurrency(v.price)}
+                      </span>
                     </button>
                   );
                 })}
@@ -264,13 +281,22 @@ export function ProductModal({ product, onClose }: ProductModalProps) {
           </div>
 
           {/* Botão Adicionar ao Pedido com Preço Dinâmico */}
-          <button
-            onClick={handleAddToCart}
-            className="flex-1 py-3 px-4 rounded-full bg-nice-pink hover:bg-nice-pink-hover text-white font-bold text-xs sm:text-sm shadow-luxury flex items-center justify-between transition-all transform active:scale-98"
-          >
-            <span>Adicionar ao Pedido</span>
-            <span>{formatCurrency(totalPrice)}</span>
-          </button>
+          {product.is_paused || (selectedVariation && selectedVariation.is_paused) ? (
+            <button
+              disabled
+              className="flex-1 py-3 px-4 rounded-full bg-gray-300 text-gray-500 font-bold text-xs sm:text-sm cursor-not-allowed flex items-center justify-center"
+            >
+              <span>Esgotado no Momento</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleAddToCart}
+              className="flex-1 py-3 px-4 rounded-full bg-nice-pink hover:bg-nice-pink-hover text-white font-bold text-xs sm:text-sm shadow-luxury flex items-center justify-between transition-all transform active:scale-98"
+            >
+              <span>Adicionar ao Pedido</span>
+              <span>{formatCurrency(totalPrice)}</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
