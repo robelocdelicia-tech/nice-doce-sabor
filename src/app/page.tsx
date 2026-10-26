@@ -24,6 +24,16 @@ import { calculateBestSellers } from "@/lib/bestSellers";
 import { Header } from "@/components/Header";
 import { TestimonialsStories } from "@/components/TestimonialsStories";
 import { getStoredCoupons, filterDeletedCoupons } from "@/lib/couponStorage";
+import {
+  getInitialProducts,
+  fetchProductsFromServer,
+  getInitialStore,
+  fetchStoreFromServer,
+  getInitialCategories,
+  fetchCategoriesFromServer,
+  getInitialBanners,
+  fetchBannersFromServer,
+} from "@/lib/dataSync";
 import { BannerCarousel } from "@/components/BannerCarousel";
 import { CategoryNav } from "@/components/CategoryNav";
 import { ProductCard } from "@/components/ProductCard";
@@ -47,10 +57,10 @@ import {
 } from "lucide-react";
 
 export default function HomePage() {
-  const [store, setStore] = useState<Store>(DEFAULT_STORE);
-  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
-  const [products, setProducts] = useState<Product[]>(DEFAULT_PRODUCTS);
-  const [banners, setBanners] = useState<PromoBanner[]>(DEFAULT_PROMO_BANNERS);
+  const [store, setStore] = useState<Store>(getInitialStore);
+  const [categories, setCategories] = useState<Category[]>(getInitialCategories);
+  const [products, setProducts] = useState<Product[]>(getInitialProducts);
+  const [banners, setBanners] = useState<PromoBanner[]>(getInitialBanners);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
 
@@ -58,78 +68,119 @@ export default function HomePage() {
   const [removedItemNotice, setRemovedItemNotice] = useState<string | null>(null);
   const [copiedCoupon, setCopiedCoupon] = useState<string | null>(null);
 
-  // Carregar produtos, categorias, cupons, banners e configurações salvas da confeitaria com migração de cache
+  // Carregar produtos, categorias, cupons, banners e configurações salvas com sincronização direta
   useEffect(() => {
     const loadCustomData = () => {
       try {
-        const CACHE_VERSION_KEY = "nice_products_v3_real";
-        const hasV3 = localStorage.getItem(CACHE_VERSION_KEY);
         const savedProds = localStorage.getItem("nice_custom_products");
-
-        if (!hasV3) {
-          localStorage.removeItem("nice_custom_products");
-          localStorage.setItem(CACHE_VERSION_KEY, "true");
-          setProducts(DEFAULT_PRODUCTS);
-        } else if (savedProds) {
-          const parsed = JSON.parse(savedProds);
-          const hasOldRepeatedCake =
-            parsed.filter((p: Product) =>
-              p.images?.[0]?.includes("photo-1578985545062-69928b1d9587")
-            ).length > 1;
-
-          if (hasOldRepeatedCake) {
-            localStorage.removeItem("nice_custom_products");
-            setProducts(DEFAULT_PRODUCTS);
-          } else {
-            setProducts(parsed);
-          }
-        } else {
-          setProducts(DEFAULT_PRODUCTS);
+        if (savedProds) {
+          try {
+            const parsed = JSON.parse(savedProds);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setProducts(parsed);
+            }
+          } catch (e) {}
         }
 
         const savedCats = localStorage.getItem("nice_custom_categories");
         if (savedCats) {
-          setCategories(JSON.parse(savedCats));
+          try {
+            const parsedCats = JSON.parse(savedCats);
+            if (Array.isArray(parsedCats) && parsedCats.length > 0) {
+              setCategories(parsedCats);
+            }
+          } catch (e) {}
         }
 
         const savedBanners = localStorage.getItem("nice_promo_banners");
         if (savedBanners) {
-          setBanners(JSON.parse(savedBanners));
+          try {
+            const parsedBanners = JSON.parse(savedBanners);
+            if (Array.isArray(parsedBanners)) {
+              setBanners(parsedBanners);
+            }
+          } catch (e) {}
         }
 
         // Carrega cupons respeitando exclusões permanentes
         const loadedCoupons = getStoredCoupons();
         setCoupons(loadedCoupons);
 
-        // Sincroniza com a API do servidor garantindo que cupons deletados nunca retornem
-        fetch("/api/coupons")
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.success && Array.isArray(data.coupons)) {
-              const safeList = filterDeletedCoupons(data.coupons);
-              setCoupons(safeList);
-              localStorage.setItem("nice_custom_coupons", JSON.stringify(safeList));
-            }
-          })
-          .catch((err) => console.warn("Aviso ao carregar cupons:", err));
-
         const savedOrders = localStorage.getItem("nice_orders");
         if (savedOrders) {
-          setOrders(JSON.parse(savedOrders));
+          try {
+            setOrders(JSON.parse(savedOrders));
+          } catch (e) {}
         }
 
         const savedStore = localStorage.getItem("nice_store_settings");
         if (savedStore) {
-          setStore(JSON.parse(savedStore));
+          try {
+            const parsedStore = JSON.parse(savedStore);
+            if (parsedStore && parsedStore.name) {
+              setStore(parsedStore);
+            }
+          } catch (e) {}
         }
       } catch (e) {
-        console.error("Erro ao sincronizar dados:", e);
+        console.error("Erro ao sincronizar dados locais:", e);
       }
     };
 
+    // Carga inicial dos dados locais
     loadCustomData();
+
+    // Sincronização direta com a API do servidor
+    fetchProductsFromServer().then((prods) => {
+      if (prods && prods.length > 0) setProducts(prods);
+    });
+
+    fetchStoreFromServer().then((st) => {
+      if (st) setStore(st);
+    });
+
+    fetchCategoriesFromServer().then((cats) => {
+      if (cats && cats.length > 0) setCategories(cats);
+    });
+
+    fetchBannersFromServer().then((bans) => {
+      if (bans && bans.length > 0) setBanners(bans);
+    });
+
+    fetch("/api/coupons")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.coupons)) {
+          const safeList = filterDeletedCoupons(data.coupons);
+          setCoupons(safeList);
+          localStorage.setItem("nice_custom_coupons", JSON.stringify(safeList));
+        }
+      })
+      .catch((err) => console.warn("Aviso ao carregar cupons:", err));
+
+    const handleProductsUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setProducts(e.detail);
+      }
+    };
+
+    const handleStoreUpdate = (e: any) => {
+      if (e.detail) {
+        setStore(e.detail);
+      }
+    };
+
     window.addEventListener("storage", loadCustomData);
-    return () => window.removeEventListener("storage", loadCustomData);
+    window.addEventListener("stock_update", loadCustomData);
+    window.addEventListener("products_update", handleProductsUpdate);
+    window.addEventListener("store_update", handleStoreUpdate);
+
+    return () => {
+      window.removeEventListener("storage", loadCustomData);
+      window.removeEventListener("stock_update", loadCustomData);
+      window.removeEventListener("products_update", handleProductsUpdate);
+      window.removeEventListener("store_update", handleStoreUpdate);
+    };
   }, []);
 
   // Leitura automática de cupom via parâmetro URL (?cupom=CODIGO)

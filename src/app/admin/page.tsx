@@ -77,6 +77,20 @@ import { CouponsManagerTab } from "@/components/admin/CouponsManagerTab";
 import { BestSellersConfigModal } from "@/components/admin/BestSellersConfigModal";
 import { StockManagerTab } from "@/components/admin/StockManagerTab";
 import { getStoredCoupons, saveStoredCoupons, filterDeletedCoupons } from "@/lib/couponStorage";
+import {
+  getInitialProducts,
+  saveProductsSync,
+  fetchProductsFromServer,
+  getInitialStore,
+  saveStoreSync,
+  fetchStoreFromServer,
+  getInitialCategories,
+  saveCategoriesSync,
+  fetchCategoriesFromServer,
+  getInitialBanners,
+  saveBannersSync,
+  fetchBannersFromServer,
+} from "@/lib/dataSync";
 
 function AdminHeaderLogo() {
   const [error, setError] = useState(false);
@@ -122,11 +136,11 @@ export default function AdminPage() {
     "pedidos" | "pdv" | "produtos" | "estoque" | "cupons" | "banners" | "entregas" | "financeiro" | "config"
   >("pedidos");
 
-  const [store, setStore] = useState<Store>(DEFAULT_STORE);
+  const [store, setStore] = useState<Store>(getInitialStore);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [products, setProducts] = useState<Product[]>(DEFAULT_PRODUCTS);
-  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
-  const [banners, setBanners] = useState<PromoBanner[]>(DEFAULT_PROMO_BANNERS);
+  const [products, setProducts] = useState<Product[]>(getInitialProducts);
+  const [categories, setCategories] = useState<Category[]>(getInitialCategories);
+  const [banners, setBanners] = useState<PromoBanner[]>(getInitialBanners);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -281,6 +295,19 @@ export default function AdminPage() {
       }
     }
 
+    // Sincroniza loja com o servidor
+    fetchStoreFromServer().then((st) => {
+      if (st) setStore(st);
+    });
+
+    // Sincroniza categorias e banners com o servidor
+    fetchCategoriesFromServer().then((cats) => {
+      if (cats && cats.length > 0) setCategories(cats);
+    });
+    fetchBannersFromServer().then((bans) => {
+      if (bans && bans.length > 0) setBanners(bans);
+    });
+
     const savedNh = localStorage.getItem("nice_neighborhoods");
     if (savedNh) {
       try {
@@ -332,11 +359,20 @@ export default function AdminPage() {
         } catch (err) {}
       }
     };
+
+    const handleStoreUpdate = (e: any) => {
+      if (e.detail) {
+        setStore(e.detail);
+      }
+    };
+
     window.addEventListener("storage", handleStorage);
+    window.addEventListener("store_update", handleStoreUpdate);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("store_update", handleStoreUpdate);
     };
   }, [soundEnabled]);
 
@@ -347,15 +383,13 @@ export default function AdminPage() {
 
   const handleSaveStore = (updatedStore: Store) => {
     setStore(updatedStore);
-    localStorage.setItem("nice_store_settings", JSON.stringify(updatedStore));
-    window.dispatchEvent(new Event("storage"));
+    saveStoreSync(updatedStore);
   };
 
   const handleUpdateDeliveryEnabled = (enabled: boolean) => {
     const updated = { ...store, delivery_enabled: enabled };
     setStore(updated);
-    localStorage.setItem("nice_store_settings", JSON.stringify(updated));
-    window.dispatchEvent(new Event("storage"));
+    saveStoreSync(updated);
   };
 
   const handleSaveNeighborhoods = (items: Neighborhood[]) => {
@@ -429,43 +463,25 @@ export default function AdminPage() {
 
   const handleSaveBanners = (updated: PromoBanner[]) => {
     setBanners(updated);
-    localStorage.setItem("nice_promo_banners", JSON.stringify(updated));
+    saveBannersSync(updated);
   };
 
-  // Carrega produtos personalizados com migração de cache
+  // Carrega e sincroniza produtos com o servidor
   useEffect(() => {
-    try {
-      const CACHE_VERSION_KEY = "nice_products_v3_real";
-      const hasV3 = localStorage.getItem(CACHE_VERSION_KEY);
-      const savedProds = localStorage.getItem("nice_custom_products");
-
-      if (!hasV3) {
-        localStorage.removeItem("nice_custom_products");
-        localStorage.setItem(CACHE_VERSION_KEY, "true");
-        setProducts(DEFAULT_PRODUCTS);
-      } else if (savedProds) {
-        const parsed = JSON.parse(savedProds);
-        const hasOldRepeatedCake = parsed.filter((p: Product) =>
-          p.images?.[0]?.includes("photo-1578985545062-69928b1d9587")
-        ).length > 1;
-
-        if (hasOldRepeatedCake) {
-          localStorage.removeItem("nice_custom_products");
-          setProducts(DEFAULT_PRODUCTS);
-        } else {
-          setProducts(parsed);
-        }
-      } else {
-        setProducts(DEFAULT_PRODUCTS);
+    fetchProductsFromServer().then((prods) => {
+      if (prods && prods.length > 0) {
+        setProducts(prods);
       }
-    } catch (e) {
-      console.error("Erro ao carregar produtos:", e);
-    }
+    });
   }, []);
 
   // Sincronização em tempo real de produtos e estoque entre abas e vendas
   useEffect(() => {
-    const handleStorageUpdate = () => {
+    const handleStorageUpdate = (e?: any) => {
+      if (e?.detail && Array.isArray(e.detail)) {
+        setProducts(e.detail);
+        return;
+      }
       try {
         const savedProds = localStorage.getItem("nice_custom_products");
         if (savedProds) {
@@ -478,9 +494,11 @@ export default function AdminPage() {
     };
     window.addEventListener("storage", handleStorageUpdate);
     window.addEventListener("stock_update", handleStorageUpdate);
+    window.addEventListener("products_update", handleStorageUpdate);
     return () => {
       window.removeEventListener("storage", handleStorageUpdate);
       window.removeEventListener("stock_update", handleStorageUpdate);
+      window.removeEventListener("products_update", handleStorageUpdate);
     };
   }, []);
 
@@ -561,12 +579,7 @@ export default function AdminPage() {
       } else {
         updated = [newProd, ...prev];
       }
-      try {
-        localStorage.setItem("nice_custom_products", JSON.stringify(updated));
-        window.dispatchEvent(new Event("storage"));
-      } catch (e) {
-        console.error("Erro ao salvar produto:", e);
-      }
+      saveProductsSync(updated);
       return updated;
     });
   };
@@ -595,10 +608,7 @@ export default function AdminPage() {
         return p;
       });
 
-      try {
-        localStorage.setItem("nice_custom_products", JSON.stringify(updated));
-        window.dispatchEvent(new Event("storage"));
-      } catch (e) {}
+      saveProductsSync(updated);
       return updated;
     });
   };
@@ -637,10 +647,7 @@ export default function AdminPage() {
         return p;
       });
 
-      try {
-        localStorage.setItem("nice_custom_products", JSON.stringify(updated));
-        window.dispatchEvent(new Event("storage"));
-      } catch (e) {}
+      saveProductsSync(updated);
       return updated;
     });
   };
@@ -649,10 +656,7 @@ export default function AdminPage() {
   const handleTogglePauseCategory = (categoryId: string) => {
     setCategories((prev) => {
       const updated = prev.map((c) => (c.id === categoryId ? { ...c, is_paused: !c.is_paused } : c));
-      try {
-        localStorage.setItem("nice_custom_categories", JSON.stringify(updated));
-        window.dispatchEvent(new Event("storage"));
-      } catch (e) {}
+      saveCategoriesSync(updated);
       return updated;
     });
   };
@@ -674,10 +678,7 @@ export default function AdminPage() {
   const handleArchiveProduct = (productId: string) => {
     setProducts((prev) => {
       const updated = prev.map((p) => (p.id === productId ? { ...p, is_archived: true } : p));
-      try {
-        localStorage.setItem("nice_custom_products", JSON.stringify(updated));
-        window.dispatchEvent(new Event("storage"));
-      } catch (e) {}
+      saveProductsSync(updated);
       return updated;
     });
     setDeleteModalProduct(null);
@@ -687,12 +688,7 @@ export default function AdminPage() {
   const handleDeleteProductPermanently = (productId: string) => {
     setProducts((prev) => {
       const updated = prev.filter((p) => p.id !== productId);
-      try {
-        localStorage.setItem("nice_custom_products", JSON.stringify(updated));
-        window.dispatchEvent(new Event("storage"));
-      } catch (e) {
-        console.error("Erro ao excluir produto:", e);
-      }
+      saveProductsSync(updated);
       return updated;
     });
     setDeleteModalProduct(null);
@@ -732,12 +728,7 @@ export default function AdminPage() {
           ? { ...p, images: [imageUrl, ...p.images.filter((img) => img !== imageUrl)] }
           : p
       );
-      try {
-        localStorage.setItem("nice_custom_products", JSON.stringify(updated));
-        window.dispatchEvent(new Event("storage"));
-      } catch (e) {
-        console.error("Erro ao salvar produto:", e);
-      }
+      saveProductsSync(updated);
       return updated;
     });
   };
@@ -759,7 +750,11 @@ export default function AdminPage() {
 
   // Controle de Horário e Botão Aberto/Fechado
   const handleToggleManualStatus = (status: "auto" | "open" | "closed") => {
-    setStore((prev) => ({ ...prev, manual_status: status }));
+    setStore((prev) => {
+      const updated = { ...prev, manual_status: status };
+      saveStoreSync(updated);
+      return updated;
+    });
   };
 
   // Importador em massa (Instagram text parser)
@@ -848,7 +843,11 @@ export default function AdminPage() {
       });
     }
 
-    setProducts((prev) => [...prev, ...newItems]);
+    setProducts((prev) => {
+      const updated = [...prev, ...newItems];
+      saveProductsSync(updated);
+      return updated;
+    });
     setImportSuccess(`${newItems.length} produtos importados com sucesso!`);
     setImportText("");
     setTimeout(() => setImportSuccess(""), 4000);

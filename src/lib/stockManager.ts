@@ -1,4 +1,5 @@
 import { Product, OrderItem, StockMovement, StockMovementType } from "@/types";
+import { saveProductsSync } from "@/lib/dataSync";
 
 const MOVEMENTS_STORAGE_KEY = "nice_stock_movements";
 const PRODUCTS_STORAGE_KEY = "nice_custom_products";
@@ -72,10 +73,9 @@ export function getStoredProducts(): Product[] {
  * Salva a lista de produtos atualizada e despacha evento para re-renderizar
  */
 export function saveStoredProducts(products: Product[]) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || !Array.isArray(products)) return;
   try {
-    localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(products));
-    window.dispatchEvent(new Event("storage"));
+    saveProductsSync(products);
     window.dispatchEvent(new Event("stock_update"));
   } catch (err) {
     console.error("Erro ao persistir produtos com estoque:", err);

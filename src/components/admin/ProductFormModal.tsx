@@ -130,9 +130,9 @@ export function ProductFormModal({
     reader.onload = (event) => {
       const img = document.createElement("img");
       img.onload = () => {
-        // Redimensiona para resolução ideal (máx 800x800) em JPEG leve
+        // Redimensiona para resolução ideal (máx 600x600) em JPEG leve otimizado para salvar sem estourar cota
         const canvas = document.createElement("canvas");
-        const maxDim = 800;
+        const maxDim = 600;
         let width = img.width;
         let height = img.height;
 
@@ -149,7 +149,7 @@ export function ProductFormModal({
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.72);
           setImageUrl(compressedDataUrl);
         }
         setIsCompressing(false);
@@ -177,7 +177,7 @@ export function ProductFormModal({
       const img = document.createElement("img");
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const maxDim = 600;
+        const maxDim = 500;
         let width = img.width;
         let height = img.height;
 
@@ -194,7 +194,7 @@ export function ProductFormModal({
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL("image/jpeg", 0.82);
+          const compressed = canvas.toDataURL("image/jpeg", 0.70);
 
           if (flavorPhotoTargetIndex === null) {
             setNewFlavorImage(compressed);
