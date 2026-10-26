@@ -191,7 +191,10 @@ export async function getServerCoupons(): Promise<Coupon[]> {
 }
 
 // Salva e atualiza cupons no servidor
-export async function saveServerCoupons(coupons: Coupon[]): Promise<Coupon[]> {
+export async function saveServerCoupons(
+  coupons: Coupon[],
+  explicitDeletedCodes?: string[]
+): Promise<Coupon[]> {
   const normalized = coupons.map(normalizeCoupon);
   const previousMemory = memoryCoupons;
   memoryCoupons = normalized;
@@ -201,6 +204,13 @@ export async function saveServerCoupons(coupons: Coupon[]): Promise<Coupon[]> {
 
   // Se algum cupom padrão ou que estava salvo anteriormente foi removido da lista, registra como deletado
   const deletedCodes = loadDeletedCodes();
+
+  if (Array.isArray(explicitDeletedCodes)) {
+    explicitDeletedCodes.forEach((code) => {
+      if (code) deletedCodes.add(String(code).trim().toUpperCase());
+    });
+  }
+
   DEFAULT_COUPONS.forEach((dc) => {
     const cCode = dc.code.trim().toUpperCase();
     if (!currentCodes.has(cCode)) {

@@ -4,6 +4,12 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Coupon, Order, Category, Product } from "@/types";
 import { formatCurrency, formatPhone } from "@/lib/utils";
 import {
+  getStoredCoupons,
+  saveStoredCoupons,
+  deleteStoredCoupon,
+  filterDeletedCoupons,
+} from "@/lib/couponStorage";
+import {
   Tag,
   Plus,
   Edit,
@@ -42,10 +48,10 @@ export function CouponsManagerTab({
   products,
   storeDomain = typeof window !== "undefined" ? window.location.origin : "https://nicedocesabor.com",
 }: CouponsManagerTabProps) {
-  const [localCoupons, setLocalCoupons] = useState<Coupon[]>(coupons);
+  const [localCoupons, setLocalCoupons] = useState<Coupon[]>(() => filterDeletedCoupons(coupons));
 
   useEffect(() => {
-    setLocalCoupons(coupons);
+    setLocalCoupons(filterDeletedCoupons(coupons));
   }, [coupons]);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -290,8 +296,9 @@ export function CouponsManagerTab({
       updated = [newCoupon, ...filtered];
     }
 
-    setLocalCoupons(updated);
-    onSaveCoupons(updated);
+    const finalSaved = saveStoredCoupons(updated);
+    setLocalCoupons(finalSaved);
+    onSaveCoupons(finalSaved);
     setIsFormOpen(false);
     setToastMessage(editingCoupon ? `Cupom ${cleanCode} atualizado com sucesso!` : `Cupom ${cleanCode} cadastrado com sucesso!`);
     setTimeout(() => setToastMessage(""), 4000);
@@ -305,19 +312,14 @@ export function CouponsManagerTab({
     if (!deleteModalCoupon) return;
     const target = deleteModalCoupon;
     const cleanCode = target.code.trim().toUpperCase();
-    const updated = localCoupons.filter(
-      (c) => c.id !== target.id && c.code.trim().toUpperCase() !== cleanCode
-    );
 
+    // Exclui permanentemente do storage e registra na lista negra definitiva
+    const updated = deleteStoredCoupon(cleanCode);
     setLocalCoupons(updated);
     onSaveCoupons(updated);
 
-    fetch(`/api/coupons?id=${encodeURIComponent(target.id)}&code=${encodeURIComponent(cleanCode)}`, {
-      method: "DELETE",
-    }).catch((e) => console.warn("Aviso ao deletar cupom no servidor:", e));
-
     setDeleteModalCoupon(null);
-    setToastMessage(`Cupom ${cleanCode} excluído com sucesso!`);
+    setToastMessage(`Cupom ${cleanCode} excluído permanentemente com sucesso!`);
     setTimeout(() => setToastMessage(""), 4000);
   };
 
@@ -325,8 +327,9 @@ export function CouponsManagerTab({
     const updated = localCoupons.map((c) =>
       c.id === id ? { ...c, is_active: !c.is_active } : c
     );
-    setLocalCoupons(updated);
-    onSaveCoupons(updated);
+    const finalSaved = saveStoredCoupons(updated);
+    setLocalCoupons(finalSaved);
+    onSaveCoupons(finalSaved);
   };
 
   const handleOpenWhatsAppBlast = (coupon: Coupon) => {

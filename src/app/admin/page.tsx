@@ -76,6 +76,7 @@ import { POSRegisterTab } from "@/components/admin/POSRegisterTab";
 import { CouponsManagerTab } from "@/components/admin/CouponsManagerTab";
 import { BestSellersConfigModal } from "@/components/admin/BestSellersConfigModal";
 import { StockManagerTab } from "@/components/admin/StockManagerTab";
+import { getStoredCoupons, saveStoredCoupons, filterDeletedCoupons } from "@/lib/couponStorage";
 
 function AdminHeaderLogo() {
   const [error, setError] = useState(false);
@@ -126,7 +127,7 @@ export default function AdminPage() {
   const [products, setProducts] = useState<Product[]>(DEFAULT_PRODUCTS);
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [banners, setBanners] = useState<PromoBanner[]>(DEFAULT_PROMO_BANNERS);
-  const [coupons, setCoupons] = useState<Coupon[]>(DEFAULT_COUPONS);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [autoPrintEnabled, setAutoPrintEnabled] = useState<boolean>(true);
@@ -289,34 +290,21 @@ export default function AdminPage() {
       }
     }
 
-    const savedCoupons = localStorage.getItem("nice_custom_coupons");
-    if (savedCoupons) {
-      try {
-        const parsed = JSON.parse(savedCoupons);
-        if (Array.isArray(parsed)) {
-          setCoupons(parsed);
-          // Envia cupons locais ao servidor para garantir sincronização
-          fetch("/api/coupons", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ coupons: parsed }),
-          }).catch(() => {});
+    // Carrega cupons respeitando exclusões permanentes
+    const initialCoupons = getStoredCoupons();
+    setCoupons(initialCoupons);
+
+    // Sincroniza com servidor sem permitir ressuscitar cupons excluídos
+    fetch("/api/coupons")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.coupons)) {
+          const safeCoupons = filterDeletedCoupons(data.coupons);
+          setCoupons(safeCoupons);
+          localStorage.setItem("nice_custom_coupons", JSON.stringify(safeCoupons));
         }
-      } catch (e) {
-        console.error("Erro ao carregar cupons locais:", e);
-      }
-    } else {
-      // Primeira carga: busca do servidor e inicializa localStorage
-      fetch("/api/coupons")
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && Array.isArray(data.coupons)) {
-            setCoupons(data.coupons);
-            localStorage.setItem("nice_custom_coupons", JSON.stringify(data.coupons));
-          }
-        })
-        .catch(() => {});
-    }
+      })
+      .catch(() => {});
 
     loadOrders(false); // Carga inicial sem imprimir anteriores
 
@@ -340,7 +328,7 @@ export default function AdminPage() {
       }
       if (e.key === "nice_custom_coupons" && e.newValue) {
         try {
-          setCoupons(JSON.parse(e.newValue));
+          setCoupons(filterDeletedCoupons(JSON.parse(e.newValue)));
         } catch (err) {}
       }
     };
@@ -710,20 +698,10 @@ export default function AdminPage() {
     setDeleteModalProduct(null);
   };
 
-  // Salvar cupons atualizados
+  // Salvar cupons atualizados com persistência à prova de ressuscitação
   const handleSaveCoupons = (updated: Coupon[]) => {
-    setCoupons(updated);
-    try {
-      localStorage.setItem("nice_custom_coupons", JSON.stringify(updated));
-      window.dispatchEvent(new Event("storage"));
-    } catch (e) {}
-
-    // Sincroniza imediatamente com o servidor/API
-    fetch("/api/coupons", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ coupons: updated }),
-    }).catch((e) => console.warn("Erro ao salvar cupons na API:", e));
+    const saved = saveStoredCoupons(updated);
+    setCoupons(saved);
   };
 
   // Salvar pedido balcão gerado no PDV
@@ -1737,13 +1715,24 @@ export default function AdminPage() {
                                     : "bg-white border-pink-100 text-nice-wine"
                                 }`}
                               >
-                                <div className="flex items-center gap-2">
-                                  <span className="font-semibold">{v.name}</span>
-                                  <span className="text-[11px] font-bold text-nice-pink">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {(v.image || v.image_url) && (
+                                    <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-pink-200 flex-shrink-0 bg-pink-50 shadow-sm">
+                                      <Image
+                                        src={v.image || v.image_url || "/logo.jpg"}
+                                        alt={v.name}
+                                        fill
+                                        sizes="32px"
+                                        className="object-cover"
+                                      />
+                                    </div>
+                                  )}
+                                  <span className="font-semibold truncate">{v.name}</span>
+                                  <span className="text-[11px] font-bold text-nice-pink flex-shrink-0">
                                     {formatCurrency(v.price)}
                                   </span>
                                   {isFlavorPaused && (
-                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-amber-200 text-amber-900">
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase bg-amber-200 text-amber-900 flex-shrink-0">
                                       Esgotado
                                     </span>
                                   )}

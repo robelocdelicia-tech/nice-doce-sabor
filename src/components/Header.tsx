@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { Store } from "@/types";
 import { checkStoreStatus } from "@/lib/utils";
-import { Clock, MessageCircle, Heart, Sparkles, MapPin, Moon, Sun } from "lucide-react";
+import { Clock, MessageCircle, Heart, Sparkles, MapPin, Moon, Sun, X, Calendar } from "lucide-react";
 
 interface HeaderProps {
   store: Store;
@@ -16,6 +16,18 @@ export function Header({ store, onOpenStory }: HeaderProps) {
   const [isDarkLuxury, setIsDarkLuxury] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const [logoSrc, setLogoSrc] = useState(store.logo_url || "/logo.jpg");
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+
+  const DAYS_ORDER: { key: string; name: string; dayIndex: number }[] = [
+    { key: "monday", name: "Segunda-feira", dayIndex: 1 },
+    { key: "tuesday", name: "Terça-feira", dayIndex: 2 },
+    { key: "wednesday", name: "Quarta-feira", dayIndex: 3 },
+    { key: "thursday", name: "Quinta-feira", dayIndex: 4 },
+    { key: "friday", name: "Sexta-feira", dayIndex: 5 },
+    { key: "saturday", name: "Sábado", dayIndex: 6 },
+    { key: "sunday", name: "Domingo", dayIndex: 0 },
+  ];
+  const currentDayIndex = new Date().getDay();
 
   useEffect(() => {
     setLogoSrc(store.logo_url || "/logo.jpg");
@@ -108,14 +120,17 @@ export function Header({ store, onOpenStory }: HeaderProps) {
           {store.city} • Quarta a Segunda das 12h às 19h (Terça Fechado)
         </p>
 
-        {/* Badge de Horário em Tempo Real */}
+        {/* Badge de Horário em Tempo Real (Interativo com Modal de Grade Semanal) */}
         <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-          <div
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shadow-sm transition-all ${
+          <button
+            type="button"
+            onClick={() => setIsScheduleModalOpen(true)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shadow-sm transition-all cursor-pointer hover:scale-[1.02] active:scale-95 ${
               status.isOpen
                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                 : "bg-rose-50 text-rose-700 border border-rose-200"
             }`}
+            title="Toque para ver a grade de horários da semana"
           >
             <span
               className={`w-2 h-2 rounded-full ${
@@ -126,7 +141,7 @@ export function Header({ store, onOpenStory }: HeaderProps) {
             <span>{status.statusLabel}</span>
             <span className="text-gray-400">•</span>
             <span className="font-normal">{status.detailMessage}</span>
-          </div>
+          </button>
 
           <button
             onClick={onOpenStory}
@@ -182,6 +197,120 @@ export function Header({ store, onOpenStory }: HeaderProps) {
           </a>
         </div>
       </div>
+
+      {/* Modal de Horários de Atendimento da Confeitaria */}
+      {isScheduleModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4 border-2 border-pink-100 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-pink-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-full bg-pink-100 text-nice-pink flex items-center justify-center">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div className="text-left">
+                  <h3 className="font-extrabold text-nice-wine text-base">
+                    Horários de Atendimento
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    {store.name} • {store.owner_name}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsScheduleModalOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-nice-wine rounded-full hover:bg-pink-50 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Status Atual */}
+            <div
+              className={`p-3 rounded-2xl border text-xs font-bold flex items-center gap-2 ${
+                status.isOpen
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                  : "bg-rose-50 text-rose-800 border-rose-200"
+              }`}
+            >
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  status.isOpen ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
+                }`}
+              />
+              <span>{status.statusLabel}</span>
+              <span className="text-gray-400">•</span>
+              <span className="font-normal">{status.detailMessage}</span>
+            </div>
+
+            {/* Tabela dos 7 Dias da Semana */}
+            <div className="space-y-1.5">
+              <span className="text-xs font-bold text-nice-wine block mb-1 text-left">
+                Grade Semanal de Funcionamento:
+              </span>
+
+              {DAYS_ORDER.map(({ key, name, dayIndex }) => {
+                const daySchedule = store.schedule_config?.[key] || {
+                  open: "12:00",
+                  close: "19:00",
+                  closed: false,
+                };
+                const isToday = currentDayIndex === dayIndex;
+                const isClosed = Boolean(daySchedule.closed);
+
+                return (
+                  <div
+                    key={key}
+                    className={`flex items-center justify-between p-2.5 rounded-xl text-xs transition ${
+                      isToday
+                        ? "bg-pink-100/60 border border-nice-pink font-bold text-nice-wine shadow-sm"
+                        : "bg-pink-50/30 border border-pink-100/60 text-gray-700"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">
+                        {name} {isToday && <span className="text-[10px] text-nice-pink font-extrabold">(Hoje)</span>}
+                      </span>
+                    </div>
+
+                    <div>
+                      {isClosed ? (
+                        <span className="text-[11px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                          Fechado
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-extrabold text-nice-wine">
+                          {daySchedule.open} às {daySchedule.close}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Retirada e Local */}
+            <div className="pt-2 border-t border-pink-100 text-left text-xs text-gray-600 space-y-1">
+              <div className="flex items-start gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-nice-pink mt-0.5 flex-shrink-0" />
+                <span>
+                  <strong>Retirada no local:</strong> {store.pickup_address} ({store.city})
+                </span>
+              </div>
+            </div>
+
+            {/* Botão Fechar */}
+            <button
+              type="button"
+              onClick={() => setIsScheduleModalOpen(false)}
+              className="w-full py-2.5 rounded-2xl bg-nice-pink text-white font-bold text-xs shadow-md shadow-pink-500/20 hover:bg-nice-pink-hover transition active:scale-95"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

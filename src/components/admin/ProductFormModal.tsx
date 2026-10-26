@@ -45,9 +45,13 @@ export function ProductFormModal({
   const [currentStock, setCurrentStock] = useState("10");
   const [minStockAlert, setMinStockAlert] = useState("3");
 
-  // Sabor novo
+  // Sabor novo com foto
   const [newFlavorName, setNewFlavorName] = useState("");
   const [newFlavorPrice, setNewFlavorPrice] = useState("");
+  const [newFlavorImage, setNewFlavorImage] = useState("");
+  const [flavorPhotoTargetIndex, setFlavorPhotoTargetIndex] = useState<number | null>(null);
+  const [showFlavorPresetPicker, setShowFlavorPresetPicker] = useState(false);
+  const flavorFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Upload de arquivo
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -107,6 +111,9 @@ export function ProductFormModal({
     }
     setNewFlavorName("");
     setNewFlavorPrice("");
+    setNewFlavorImage("");
+    setFlavorPhotoTargetIndex(null);
+    setShowFlavorPresetPicker(false);
     setShowPresetGallery(false);
   }, [initialProduct, isOpen, categories]);
 
@@ -158,15 +165,82 @@ export function ProductFormModal({
     e.target.value = "";
   };
 
+  // Processamento de foto de Sabor/Variação
+  const handleFlavorFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsCompressing(true);
+    const reader = new FileReader();
+
+    reader.onload = (event) => {
+      const img = document.createElement("img");
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxDim = 600;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressed = canvas.toDataURL("image/jpeg", 0.82);
+
+          if (flavorPhotoTargetIndex === null) {
+            setNewFlavorImage(compressed);
+          } else {
+            handleUpdateFlavorImage(flavorPhotoTargetIndex, compressed);
+          }
+        }
+        setIsCompressing(false);
+      };
+      img.onerror = () => setIsCompressing(false);
+      img.src = event.target?.result as string;
+    };
+
+    reader.onerror = () => setIsCompressing(false);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleUpdateFlavorImage = (index: number, imgUrl: string) => {
+    const copy = [...flavors];
+    copy[index] = {
+      ...copy[index],
+      image: imgUrl.trim() || undefined,
+      image_url: imgUrl.trim() || undefined,
+    };
+    setFlavors(copy);
+  };
+
   const handleAddFlavor = () => {
     if (!newFlavorName.trim()) return;
     const cleanFlavorPrice = newFlavorPrice.replace(/[^\d.,]/g, "").replace(",", ".");
     const cleanBasePrice = basePrice.replace(/[^\d.,]/g, "").replace(",", ".");
     const price = parseFloat(cleanFlavorPrice) || parseFloat(cleanBasePrice) || 0;
 
-    setFlavors([...flavors, { name: newFlavorName.trim(), price }]);
+    setFlavors([
+      ...flavors,
+      {
+        name: newFlavorName.trim(),
+        price,
+        image: newFlavorImage.trim() || undefined,
+        image_url: newFlavorImage.trim() || undefined,
+      },
+    ]);
     setNewFlavorName("");
     setNewFlavorPrice("");
+    setNewFlavorImage("");
   };
 
   const handleRemoveFlavor = (index: number) => {
@@ -485,59 +559,183 @@ export function ProductFormModal({
             )}
           </div>
 
-          {/* SEÇÃO 2: SABORES E VARIAÇÕES COM PREÇOS */}
+          {/* Input Oculto de Foto para Sabores */}
+          <input
+            type="file"
+            ref={flavorFileInputRef}
+            accept="image/*"
+            capture="environment"
+            onChange={handleFlavorFileChange}
+            className="hidden"
+          />
+
+          {/* SEÇÃO 2: SABORES E VARIAÇÕES COM FOTOS E PREÇOS */}
           <div className="pt-3 border-t border-pink-100 space-y-2.5">
             <div className="flex items-center justify-between">
               <label className="font-extrabold text-nice-wine flex items-center gap-1.5 text-xs">
                 <Layers className="w-4 h-4 text-nice-pink" />
-                <span>Sabores / Variações com Preços ({flavors.length})</span>
+                <span>Sabores / Variações com Fotos & Preços ({flavors.length})</span>
               </label>
-              <span className="text-[10px] text-gray-400">
-                Opcional para produtos com sabores
-              </span>
+              <button
+                type="button"
+                onClick={() => setShowFlavorPresetPicker(!showFlavorPresetPicker)}
+                className="text-[11px] font-bold text-nice-pink hover:underline"
+              >
+                {showFlavorPresetPicker ? "Fechar Fotos Prontas" : "Fotos Prontas para Sabores"}
+              </button>
             </div>
 
-            {/* Adicionar Novo Sabor */}
-            <div className="flex items-center gap-2">
+            {/* Galeria Rápida de Fotos Prontas para Sabores */}
+            {showFlavorPresetPicker && (
+              <div className="p-2 bg-pink-50/70 rounded-2xl border border-pink-200 space-y-1.5 animate-in fade-in">
+                <span className="text-[10px] font-bold text-gray-600 block">
+                  Toque em uma foto para aplicar no novo sabor ou sabor selecionado:
+                </span>
+                <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-36 overflow-y-auto p-1 bg-white rounded-xl border border-pink-100">
+                  {presetPhotos.map((photo) => (
+                    <button
+                      key={photo.url}
+                      type="button"
+                      onClick={() => {
+                        if (flavorPhotoTargetIndex === null) {
+                          setNewFlavorImage(photo.url);
+                        } else {
+                          handleUpdateFlavorImage(flavorPhotoTargetIndex, photo.url);
+                          setFlavorPhotoTargetIndex(null);
+                        }
+                        setShowFlavorPresetPicker(false);
+                      }}
+                      className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 hover:border-nice-pink transition hover:scale-95"
+                      title={photo.name}
+                    >
+                      <Image src={photo.url} alt={photo.name} fill sizes="50px" className="object-cover" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Adicionar Novo Sabor com Foto Individual */}
+            <div className="flex items-center gap-2 bg-pink-50/40 p-2 rounded-2xl border border-pink-200">
+              {/* Botão de Foto do Novo Sabor */}
+              {newFlavorImage ? (
+                <div className="relative w-10 h-10 rounded-xl overflow-hidden border-2 border-nice-pink flex-shrink-0 group shadow-sm bg-white">
+                  <Image src={newFlavorImage} alt="Foto sabor" fill sizes="40px" className="object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setNewFlavorImage("")}
+                    className="absolute inset-0 bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                    title="Remover foto"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFlavorPhotoTargetIndex(null);
+                    flavorFileInputRef.current?.click();
+                  }}
+                  className="w-10 h-10 rounded-xl border-2 border-dashed border-pink-300 hover:border-nice-pink bg-white hover:bg-pink-100/60 flex flex-col items-center justify-center text-nice-pink flex-shrink-0 transition active:scale-95"
+                  title="Tirar foto ou escolher da galeria para este sabor"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <span className="text-[8px] font-bold leading-none">+Foto</span>
+                </button>
+              )}
+
               <input
                 type="text"
-                placeholder="Nome do sabor (ex.: Brigadeiro, Ninho...)"
+                placeholder="Nome do sabor (ex.: Beijinho, Uva, Ninho...)"
                 value={newFlavorName}
                 onChange={(e) => setNewFlavorName(e.target.value)}
-                className="flex-1 p-2 rounded-xl border border-pink-200 text-nice-wine focus:outline-none focus:ring-2 focus:ring-nice-pink"
+                className="flex-1 p-2 rounded-xl border border-pink-200 text-nice-wine font-medium text-xs focus:outline-none focus:ring-2 focus:ring-nice-pink bg-white"
               />
-              <div className="relative w-24">
+
+              <div className="relative w-20 flex-shrink-0">
                 <span className="absolute left-2 top-2 text-[10px] text-gray-400 font-bold">R$</span>
                 <input
                   type="text"
                   placeholder="Preço"
                   value={newFlavorPrice}
                   onChange={(e) => setNewFlavorPrice(e.target.value)}
-                  className="w-full pl-7 pr-2 py-2 rounded-xl border border-pink-200 text-nice-wine font-bold text-xs focus:outline-none focus:ring-2 focus:ring-nice-pink"
+                  className="w-full pl-6 pr-2 py-2 rounded-xl border border-pink-200 text-nice-wine font-bold text-xs focus:outline-none focus:ring-2 focus:ring-nice-pink bg-white"
                 />
               </div>
+
               <button
                 type="button"
                 onClick={handleAddFlavor}
-                className="px-3 py-2 rounded-xl bg-nice-pink text-white hover:bg-nice-pink-hover font-bold transition flex items-center gap-1 active:scale-95"
+                className="px-3 py-2 rounded-xl bg-nice-pink text-white hover:bg-nice-pink-hover font-bold text-xs transition flex items-center gap-1 active:scale-95 flex-shrink-0 shadow-sm"
                 title="Adicionar sabor"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Adicionar</span>
               </button>
             </div>
 
-            {/* Lista dos Sabores Cadastrados com Edição de Preço */}
+            {/* Lista dos Sabores Cadastrados com Edição de Foto e Preço */}
             {flavors.length > 0 && (
-              <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+              <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
                 {flavors.map((fl, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between p-2 rounded-xl bg-pink-50/60 border border-pink-100"
+                    className="flex items-center justify-between p-2 rounded-xl bg-white border border-pink-100 shadow-sm gap-2"
                   >
-                    <span className="font-semibold text-nice-wine truncate pr-2">
-                      {fl.name}
-                    </span>
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      {/* Miniatura da foto do sabor */}
+                      {fl.image || fl.image_url ? (
+                        <div className="relative w-9 h-9 rounded-xl overflow-hidden border border-pink-200 flex-shrink-0 group shadow-sm bg-pink-50">
+                          <Image
+                            src={fl.image || fl.image_url || "/logo.jpg"}
+                            alt={fl.name}
+                            fill
+                            sizes="36px"
+                            className="object-cover"
+                          />
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1 transition">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFlavorPhotoTargetIndex(idx);
+                                flavorFileInputRef.current?.click();
+                              }}
+                              className="text-white hover:text-nice-pink p-0.5"
+                              title="Trocar foto"
+                            >
+                              <Camera className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateFlavorImage(idx, "")}
+                              className="text-white hover:text-rose-400 p-0.5"
+                              title="Remover foto"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFlavorPhotoTargetIndex(idx);
+                            flavorFileInputRef.current?.click();
+                          }}
+                          className="w-9 h-9 rounded-xl border border-dashed border-pink-300 hover:border-nice-pink bg-pink-50/50 hover:bg-pink-100/60 flex flex-col items-center justify-center text-nice-pink flex-shrink-0 transition text-[8px] font-bold"
+                          title="Adicionar foto para este sabor"
+                        >
+                          <Camera className="w-3 h-3" />
+                          <span>+Foto</span>
+                        </button>
+                      )}
+
+                      <span className="font-semibold text-nice-wine truncate text-xs">
+                        {fl.name}
+                      </span>
+                    </div>
+
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <div className="relative w-20">
                         <span className="absolute left-2 top-1 text-[10px] text-gray-400 font-bold">R$</span>

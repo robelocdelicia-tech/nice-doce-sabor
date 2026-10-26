@@ -38,7 +38,11 @@ export async function POST(request: NextRequest) {
     const cleanCode = code.trim().toUpperCase();
 
     // Se o cupom foi expressamente excluído pela dona da loja, recusa imediatamente
-    if (isCouponDeleted(cleanCode)) {
+    const clientDeleted = Array.isArray(body.deleted_codes)
+      ? body.deleted_codes.map((d: any) => String(d).trim().toUpperCase())
+      : [];
+
+    if (isCouponDeleted(cleanCode) || clientDeleted.includes(cleanCode)) {
       return NextResponse.json({
         valid: false,
         discount: 0,

@@ -71,6 +71,7 @@ export type ProductVariation = {
   name: string;
   price: number;
   image?: string;
+  image_url?: string; // Foto individual do sabor / variação
   description?: string;
   is_paused?: boolean; // Pausa sabor/variação individualmente
   pause_until?: string | null;

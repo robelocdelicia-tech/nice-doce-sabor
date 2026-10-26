@@ -44,7 +44,7 @@ export function checkStoreStatus(store: Store): {
     return {
       isOpen: true,
       statusLabel: "Aberto agora",
-      detailMessage: "Atendimento ativo até as 19h",
+      detailMessage: "Atendimento ativo no momento",
     };
   }
 
@@ -68,28 +68,46 @@ export function checkStoreStatus(store: Store): {
     "friday",
     "saturday",
   ];
+  const dayNames = [
+    "Domingo",
+    "Segunda-feira",
+    "Terça-feira",
+    "Quarta-feira",
+    "Quinta-feira",
+    "Sexta-feira",
+    "Sábado",
+  ];
   const currentDayKey = dayKeys[dayIndex];
-  const dayConfig = store.schedule_config[currentDayKey];
+  const dayConfig = store.schedule_config?.[currentDayKey];
+
+  // Função auxiliar para encontrar o próximo dia e horário de abertura
+  const findNextOpenDayMessage = (fallbackPrefix: string) => {
+    for (let offset = 1; offset <= 7; offset++) {
+      const nextDayIdx = (dayIndex + offset) % 7;
+      const nextKey = dayKeys[nextDayIdx];
+      const nextCfg = store.schedule_config?.[nextKey];
+      if (nextCfg && !nextCfg.closed && nextCfg.open) {
+        const targetDay = offset === 1 ? "amanhã" : dayNames[nextDayIdx];
+        return `${fallbackPrefix} • Abre ${targetDay} às ${nextCfg.open}`;
+      }
+    }
+    return store.closed_custom_message || "Voltamos em breve!";
+  };
 
   if (!dayConfig || dayConfig.closed) {
-    // Se for terça-feira fechada, informa que abre quarta às 12h
-    const nextMsg =
-      currentDayKey === "tuesday"
-        ? "Fechado na terça. Abrimos quarta às 12h!"
-        : "Fechado hoje. Abrimos no próximo dia útil às 12h!";
     return {
       isOpen: false,
       statusLabel: "Fechado hoje",
-      detailMessage: nextMsg,
+      detailMessage: findNextOpenDayMessage("Fechado hoje"),
     };
   }
 
-  const [openHour, openMin] = dayConfig.open.split(":").map(Number);
-  const [closeHour, closeMin] = dayConfig.close.split(":").map(Number);
+  const [openHour, openMin] = (dayConfig.open || "12:00").split(":").map(Number);
+  const [closeHour, closeMin] = (dayConfig.close || "19:00").split(":").map(Number);
 
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  const openMinutes = openHour * 60 + openMin;
-  const closeMinutes = closeHour * 60 + closeMin;
+  const openMinutes = openHour * 60 + (openMin || 0);
+  const closeMinutes = closeHour * 60 + (closeMin || 0);
 
   if (currentMinutes >= openMinutes && currentMinutes < closeMinutes) {
     return {
@@ -110,7 +128,7 @@ export function checkStoreStatus(store: Store): {
   return {
     isOpen: false,
     statusLabel: "Fechado",
-    detailMessage: "Horário de hoje encerrado. Abrimos amanhã às 12h!",
+    detailMessage: findNextOpenDayMessage("Horário de hoje encerrado"),
   };
 }
 

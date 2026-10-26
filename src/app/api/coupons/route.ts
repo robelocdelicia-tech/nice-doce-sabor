@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const saved = await saveServerCoupons(updatedCoupons);
+    const explicitDeleted = Array.isArray(body.deleted_codes) ? body.deleted_codes : undefined;
+    const saved = await saveServerCoupons(updatedCoupons, explicitDeleted);
     return NextResponse.json({
       success: true,
       coupons: saved,

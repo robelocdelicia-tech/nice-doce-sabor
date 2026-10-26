@@ -41,7 +41,8 @@ export function ProductModal({ product, onClose }: ProductModalProps) {
   if (!product) return null;
 
   const images = product.images && product.images.length > 0 ? product.images : ["/logo.jpg"];
-  const currentImage = images[selectedImageIndex] || images[0] || "/logo.jpg";
+  const variationImage = selectedVariation?.image || selectedVariation?.image_url;
+  const currentImage = variationImage || images[selectedImageIndex] || images[0] || "/logo.jpg";
 
   const handleMainImageError = () => {
     if (selectedImageIndex < images.length - 1) {
@@ -173,9 +174,9 @@ export function ProductModal({ product, onClose }: ProductModalProps) {
                           : "border-pink-100 bg-white text-gray-700 hover:border-pink-300"
                       }`}
                     >
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         <div
-                          className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                          className={`w-4 h-4 rounded-full border flex-shrink-0 flex items-center justify-center ${
                             isPaused
                               ? "border-gray-300 bg-gray-200"
                               : isSelected
@@ -185,9 +186,22 @@ export function ProductModal({ product, onClose }: ProductModalProps) {
                         >
                           {isSelected && !isPaused && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                         </div>
-                        <span className={isPaused ? "line-through text-gray-400" : ""}>{v.name}</span>
+                        {(v.image || v.image_url) && (
+                          <div className="relative w-9 h-9 rounded-xl overflow-hidden border border-pink-200 shadow-sm flex-shrink-0 bg-pink-50">
+                            <Image
+                              src={v.image || v.image_url || "/logo.jpg"}
+                              alt={v.name}
+                              fill
+                              sizes="36px"
+                              className="object-cover"
+                            />
+                          </div>
+                        )}
+                        <span className={`truncate font-medium ${isPaused ? "line-through text-gray-400" : ""}`}>
+                          {v.name}
+                        </span>
                         {isPaused && (
-                          <span className="text-[10px] font-bold text-gray-500 uppercase px-1.5 py-0.2 rounded bg-gray-200">
+                          <span className="text-[10px] font-bold text-gray-500 uppercase px-1.5 py-0.2 rounded bg-gray-200 flex-shrink-0">
                             Esgotado
                           </span>
                         )}

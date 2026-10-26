@@ -23,6 +23,7 @@ import { formatCurrency } from "@/lib/utils";
 import { calculateBestSellers } from "@/lib/bestSellers";
 import { Header } from "@/components/Header";
 import { TestimonialsStories } from "@/components/TestimonialsStories";
+import { getStoredCoupons, filterDeletedCoupons } from "@/lib/couponStorage";
 import { BannerCarousel } from "@/components/BannerCarousel";
 import { CategoryNav } from "@/components/CategoryNav";
 import { ProductCard } from "@/components/ProductCard";
@@ -50,7 +51,7 @@ export default function HomePage() {
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [products, setProducts] = useState<Product[]>(DEFAULT_PRODUCTS);
   const [banners, setBanners] = useState<PromoBanner[]>(DEFAULT_PROMO_BANNERS);
-  const [coupons, setCoupons] = useState<Coupon[]>(DEFAULT_COUPONS);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
 
   const { items: cartItems, removeItem, quickIncrement } = useCart();
@@ -96,18 +97,18 @@ export default function HomePage() {
           setBanners(JSON.parse(savedBanners));
         }
 
-        const savedCoupons = localStorage.getItem("nice_custom_coupons");
-        if (savedCoupons) {
-          setCoupons(JSON.parse(savedCoupons));
-        }
+        // Carrega cupons respeitando exclusões permanentes
+        const loadedCoupons = getStoredCoupons();
+        setCoupons(loadedCoupons);
 
-        // Sincroniza com a API do servidor
+        // Sincroniza com a API do servidor garantindo que cupons deletados nunca retornem
         fetch("/api/coupons")
           .then((res) => res.json())
           .then((data) => {
             if (data.success && Array.isArray(data.coupons)) {
-              setCoupons(data.coupons);
-              localStorage.setItem("nice_custom_coupons", JSON.stringify(data.coupons));
+              const safeList = filterDeletedCoupons(data.coupons);
+              setCoupons(safeList);
+              localStorage.setItem("nice_custom_coupons", JSON.stringify(safeList));
             }
           })
           .catch((err) => console.warn("Aviso ao carregar cupons:", err));

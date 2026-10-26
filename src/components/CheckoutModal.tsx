@@ -7,6 +7,7 @@ import { Store, Order, OrderItem, Neighborhood, DeliveryAddress, Coupon, Product
 import { DEFAULT_NEIGHBORHOODS } from "@/lib/constants";
 import { formatCurrency, formatPhone, cleanPhoneForWhatsApp } from "@/lib/utils";
 import { deductStockForOrder } from "@/lib/stockManager";
+import { getDeletedCouponCodes } from "@/lib/couponStorage";
 import {
   X,
   ArrowLeft,
@@ -93,6 +94,7 @@ export function CheckoutModal({ store, isOpen, onClose }: CheckoutModalProps) {
         subtotal,
         delivery_fee: deliveryFee,
         client_coupons: clientCoupons,
+        deleted_codes: getDeletedCouponCodes(),
       };
 
       const res = await fetch("/api/coupons/validate", {
