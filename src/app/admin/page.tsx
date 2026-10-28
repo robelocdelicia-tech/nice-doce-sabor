@@ -90,6 +90,9 @@ import {
   getInitialBanners,
   saveBannersSync,
   fetchBannersFromServer,
+  syncCouponsWithCloud,
+  fetchOrdersFromCloud,
+  syncOrderUpdateToCloud,
 } from "@/lib/dataSync";
 
 function AdminHeaderLogo() {
@@ -231,46 +234,66 @@ export default function AdminPage() {
     }
   };
 
-  const loadOrders = (triggerAutoPrint: boolean = false) => {
+  const loadOrders = async (triggerAutoPrint: boolean = false) => {
     try {
       const savedOrders = localStorage.getItem("nice_orders");
-      if (savedOrders) {
-        const parsedOrders: Order[] = JSON.parse(savedOrders);
-        setOrders(parsedOrders);
+      let currentOrders: Order[] = savedOrders ? JSON.parse(savedOrders) : [];
 
-        // IMPRESSÃO AUTOMÁTICA ASSIM QUE O PEDIDO SAI:
-        if (triggerAutoPrint) {
-          const unprintedOrder = parsedOrders.find(
-            (o) => !o.is_printed && o.order_status !== "cancelled"
+      // Sincroniza com a nuvem (Netlify Blobs) para trazer pedidos de outros dispositivos
+      try {
+        const cloudOrders = await fetchOrdersFromCloud();
+        if (cloudOrders && Array.isArray(cloudOrders) && cloudOrders.length > 0) {
+          const map = new Map<string, Order>();
+          cloudOrders.forEach((o) => map.set(o.id, o));
+          currentOrders.forEach((o) => {
+            const cloudItem = map.get(o.id);
+            if (cloudItem) {
+              map.set(o.id, { ...cloudItem, is_printed: o.is_printed || cloudItem.is_printed });
+            } else {
+              map.set(o.id, o);
+            }
+          });
+          currentOrders = Array.from(map.values()).sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
           );
+          localStorage.setItem("nice_orders", JSON.stringify(currentOrders));
+        }
+      } catch (e) {}
 
-          if (unprintedOrder) {
-            if (soundEnabled) {
-              playNewOrderChime();
-            }
+      setOrders(currentOrders);
 
-            const isAutoActive = localStorage.getItem("nice_auto_print") !== "false";
-            if (isAutoActive) {
-              setAutoPrintToast(
-                `🖨️ Pedido #${unprintedOrder.order_number} (${unprintedOrder.customer_name}) enviado para impressão automática!`
-              );
-              setTimeout(() => setAutoPrintToast(""), 6000);
+      // IMPRESSÃO AUTOMÁTICA ASSIM QUE O PEDIDO SAI:
+      if (triggerAutoPrint) {
+        const unprintedOrder = currentOrders.find(
+          (o) => !o.is_printed && o.order_status !== "cancelled"
+        );
 
-              // Marca como impresso imediatamente para não duplicar impressão
-              const marked = parsedOrders.map((o) =>
-                o.id === unprintedOrder.id
-                  ? { ...o, is_printed: true, printed_at: new Date().toISOString() }
-                  : o
-              );
-              setOrders(marked);
-              localStorage.setItem("nice_orders", JSON.stringify(marked));
+        if (unprintedOrder) {
+          if (soundEnabled) {
+            playNewOrderChime();
+          }
 
-              // Dispara a impressão na impressora térmica
-              setPrintingOrder(unprintedOrder);
-              setTimeout(() => {
-                window.print();
-              }, 300);
-            }
+          const isAutoActive = localStorage.getItem("nice_auto_print") !== "false";
+          if (isAutoActive) {
+            setAutoPrintToast(
+              `🖨️ Pedido #${unprintedOrder.order_number} (${unprintedOrder.customer_name}) enviado para impressão automática!`
+            );
+            setTimeout(() => setAutoPrintToast(""), 6000);
+
+            // Marca como impresso imediatamente para não duplicar impressão
+            const marked = currentOrders.map((o) =>
+              o.id === unprintedOrder.id
+                ? { ...o, is_printed: true, printed_at: new Date().toISOString() }
+                : o
+            );
+            setOrders(marked);
+            localStorage.setItem("nice_orders", JSON.stringify(marked));
+
+            // Dispara a impressão na impressora térmica
+            setPrintingOrder(unprintedOrder);
+            setTimeout(() => {
+              window.print();
+            }, 300);
           }
         }
       }
@@ -317,21 +340,15 @@ export default function AdminPage() {
       }
     }
 
-    // Carrega cupons respeitando exclusões permanentes
+    // Carrega cupons respeitando exclusões permanentes e sincroniza com a nuvem
     const initialCoupons = getStoredCoupons();
     setCoupons(initialCoupons);
 
-    // Sincroniza com servidor sem permitir ressuscitar cupons excluídos
-    fetch("/api/coupons")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && Array.isArray(data.coupons)) {
-          const safeCoupons = filterDeletedCoupons(data.coupons);
-          setCoupons(safeCoupons);
-          localStorage.setItem("nice_custom_coupons", JSON.stringify(safeCoupons));
-        }
-      })
-      .catch(() => {});
+    syncCouponsWithCloud().then((res) => {
+      if (res && Array.isArray(res.coupons)) {
+        setCoupons(res.coupons);
+      }
+    });
 
     loadOrders(false); // Carga inicial sem imprimir anteriores
 
@@ -366,13 +383,21 @@ export default function AdminPage() {
       }
     };
 
+    const handleCouponsUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setCoupons(e.detail);
+      }
+    };
+
     window.addEventListener("storage", handleStorage);
     window.addEventListener("store_update", handleStoreUpdate);
+    window.addEventListener("coupons_update", handleCouponsUpdate);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("storage", handleStorage);
       window.removeEventListener("store_update", handleStoreUpdate);
+      window.removeEventListener("coupons_update", handleCouponsUpdate);
     };
   }, [soundEnabled]);
 
@@ -520,7 +545,11 @@ export default function AdminPage() {
     });
     saveOrders(updated);
 
-    const targetOrder = orders.find((o) => o.id === orderId);
+    const targetOrder = updated.find((o) => o.id === orderId);
+    if (targetOrder) {
+      syncOrderUpdateToCloud(targetOrder);
+    }
+
     if (autoWhatsApp && targetOrder) {
       let type: "ready" | "out" | "paid" = "ready";
       if (newStatus === "ready") type = "ready";
@@ -546,6 +575,11 @@ export default function AdminPage() {
       return o;
     });
     saveOrders(updated);
+
+    const targetOrder = updated.find((o) => o.id === orderId);
+    if (targetOrder) {
+      syncOrderUpdateToCloud(targetOrder);
+    }
   };
 
   // Disparo manual para o WhatsApp do cliente

@@ -109,13 +109,34 @@ export function saveStoredCoupons(coupons: Coupon[], newlyDeletedCode?: string):
       body: JSON.stringify({
         coupons: filtered,
         deleted_codes: deletedCodes,
+        updated_at: Date.now(),
       }),
-    }).catch(() => {});
+      keepalive: true,
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.deleted_codes)) {
+          data.deleted_codes.forEach((code: string) => {
+            if (code) markCouponAsDeleted(code);
+          });
+        }
+      })
+      .catch(() => {});
 
     if (newlyDeletedCode) {
       fetch(`/api/coupons?code=${encodeURIComponent(newlyDeletedCode.trim().toUpperCase())}`, {
         method: "DELETE",
-      }).catch(() => {});
+        keepalive: true,
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && Array.isArray(data.deleted_codes)) {
+            data.deleted_codes.forEach((code: string) => {
+              if (code) markCouponAsDeleted(code);
+            });
+          }
+        })
+        .catch(() => {});
     }
 
     return filtered;

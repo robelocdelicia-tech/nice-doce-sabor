@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Order, Product, Category, Coupon, CartItem } from "@/types";
 import { DEFAULT_PRODUCTS, DEFAULT_CATEGORIES, DEFAULT_COUPONS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
+import { getCloudItem, setCloudItem } from "@/lib/cloudStorage";
 import {
   getServerCoupons,
   calculateCouponDiscount,
@@ -15,6 +16,9 @@ let memoryOrders: Order[] = [];
 
 export async function GET(request: NextRequest) {
   try {
+    const cloud = await getCloudItem<Order[]>("orders", []);
+    let ordersList = Array.isArray(cloud.data) ? cloud.data : [];
+
     const supabase = createClient();
     if (supabase) {
       const { data: dbOrders, error } = await supabase
@@ -23,12 +27,21 @@ export async function GET(request: NextRequest) {
         .order("created_at", { ascending: false });
 
       if (!error && dbOrders && dbOrders.length > 0) {
-        return NextResponse.json({
-          success: true,
-          orders: dbOrders,
-        });
+        const map = new Map<string, Order>();
+        dbOrders.forEach((o: Order) => map.set(o.id, o));
+        ordersList.forEach((o: Order) => map.set(o.id, o));
+        ordersList = Array.from(map.values());
       }
     }
+
+    if (ordersList.length > 0) {
+      memoryOrders = ordersList;
+    }
+
+    return NextResponse.json({
+      success: true,
+      orders: ordersList.length > 0 ? ordersList : memoryOrders,
+    });
   } catch (err) {
     console.warn("Fallback para pedidos em memória:", err);
   }
@@ -333,6 +346,16 @@ export async function POST(request: NextRequest) {
 
     memoryOrders = [finalOrder, ...memoryOrders];
 
+    // Persiste o novo pedido na nuvem global (Netlify Blobs)
+    try {
+      const cloud = await getCloudItem<Order[]>("orders", []);
+      const existing = Array.isArray(cloud.data) ? cloud.data : [];
+      const updatedList = [finalOrder, ...existing.filter((o) => o.id !== finalOrder.id)];
+      await setCloudItem("orders", updatedList);
+    } catch (e) {
+      console.warn("Aviso ao persistir pedido na nuvem:", e);
+    }
+
     return NextResponse.json({
       success: true,
       order: finalOrder,
@@ -341,6 +364,56 @@ export async function POST(request: NextRequest) {
     console.error("Erro na API de pedidos:", error);
     return NextResponse.json(
       { success: false, error: "Erro interno ao processar pedido." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const updatedOrder: Order = body.order || body;
+
+    if (!updatedOrder || !updatedOrder.id) {
+      return NextResponse.json(
+        { success: false, error: "Pedido inválido ou ID não informado" },
+        { status: 400 }
+      );
+    }
+
+    memoryOrders = memoryOrders.map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o));
+
+    try {
+      const cloud = await getCloudItem<Order[]>("orders", []);
+      const existing = Array.isArray(cloud.data) ? cloud.data : [];
+      const updatedList = existing.map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o));
+      await setCloudItem("orders", updatedList);
+    } catch (e) {}
+
+    const supabase = createClient();
+    if (supabase) {
+      try {
+        await supabase
+          .from("orders")
+          .update({
+            order_status: updatedOrder.order_status,
+            payment_status: updatedOrder.payment_status,
+            paid_at: updatedOrder.paid_at || null,
+            paid_confirmed_by: updatedOrder.paid_confirmed_by || null,
+            is_printed: updatedOrder.is_printed,
+          })
+          .eq("id", updatedOrder.id);
+      } catch (err) {}
+    }
+
+    return NextResponse.json({
+      success: true,
+      order: updatedOrder,
+    });
+  } catch (err) {
+    console.error("Erro ao atualizar pedido:", err);
+    return NextResponse.json(
+      { success: false, error: "Erro interno ao atualizar pedido" },
       { status: 500 }
     );
   }

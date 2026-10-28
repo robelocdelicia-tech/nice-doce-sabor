@@ -7,6 +7,7 @@ import {
   calculateCouponDiscount,
   normalizeCoupon,
   isCouponDeleted,
+  checkCouponDeleted,
   ValidationItem,
 } from "@/lib/serverCoupons";
 
@@ -42,7 +43,9 @@ export async function POST(request: NextRequest) {
       ? body.deleted_codes.map((d: any) => String(d).trim().toUpperCase())
       : [];
 
-    if (isCouponDeleted(cleanCode) || clientDeleted.includes(cleanCode)) {
+    const isDeleted = (await checkCouponDeleted(cleanCode)) || clientDeleted.includes(cleanCode);
+
+    if (isDeleted) {
       return NextResponse.json({
         valid: false,
         discount: 0,

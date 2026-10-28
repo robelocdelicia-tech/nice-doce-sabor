@@ -1,68 +1,41 @@
-import os from "os";
-import fs from "fs";
-import path from "path";
 import { Coupon } from "@/types";
 import { DEFAULT_COUPONS } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
-
-// Caminho de persistência no diretório temporário do SO (funciona em Netlify, Vercel, Docker e Windows)
-const CACHE_FILE_PATH = path.join(os.tmpdir(), "nice_custom_coupons.json");
-const DELETED_CODES_PATH = path.join(os.tmpdir(), "nice_deleted_coupons.json");
+import { getCloudItem, setCloudItem } from "@/lib/cloudStorage";
 
 // Memória em runtime
 let memoryCoupons: Coupon[] = [...DEFAULT_COUPONS];
+let memoryDeletedCodes: Set<string> = new Set();
+let deletedCodesLoaded = false;
+
+export async function loadDeletedCodes(): Promise<Set<string>> {
+  try {
+    const cloud = await getCloudItem<string[]>("deleted_coupons", []);
+    if (Array.isArray(cloud.data)) {
+      memoryDeletedCodes = new Set(cloud.data.map((c) => String(c).trim().toUpperCase()));
+      deletedCodesLoaded = true;
+      return memoryDeletedCodes;
+    }
+  } catch (err) {}
+  return memoryDeletedCodes;
+}
 
 export function isCouponDeleted(code: string): boolean {
   if (!code) return false;
-  const deleted = loadDeletedCodes();
-  return deleted.has(code.trim().toUpperCase());
+  return memoryDeletedCodes.has(code.trim().toUpperCase());
 }
 
-function loadDeletedCodes(): Set<string> {
-  try {
-    if (fs.existsSync(DELETED_CODES_PATH)) {
-      const content = fs.readFileSync(DELETED_CODES_PATH, "utf-8");
-      const parsed = JSON.parse(content);
-      if (Array.isArray(parsed)) {
-        return new Set(parsed.map((c: string) => String(c).trim().toUpperCase()));
-      }
-    }
-  } catch (err) {}
-  return new Set();
+export async function checkCouponDeleted(code: string): Promise<boolean> {
+  if (!code) return false;
+  if (!deletedCodesLoaded) {
+    await loadDeletedCodes();
+  }
+  return memoryDeletedCodes.has(code.trim().toUpperCase());
 }
 
-function saveDeletedCodes(codes: Set<string>) {
-  try {
-    const dir = path.dirname(DELETED_CODES_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(DELETED_CODES_PATH, JSON.stringify(Array.from(codes)), "utf-8");
-  } catch (err) {}
-}
-
-// Inicialização: tenta carregar do arquivo de cache local
-function loadFromDisk(): Coupon[] {
-  try {
-    if (fs.existsSync(CACHE_FILE_PATH)) {
-      const content = fs.readFileSync(CACHE_FILE_PATH, "utf-8");
-      const parsed = JSON.parse(content);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    }
-  } catch (err) {}
-  return memoryCoupons;
-}
-
-function saveToDisk(coupons: Coupon[]) {
-  try {
-    const dir = path.dirname(CACHE_FILE_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(CACHE_FILE_PATH, JSON.stringify(coupons, null, 2), "utf-8");
-  } catch (err) {}
+export async function saveDeletedCodes(codes: Set<string>, updatedAt?: number): Promise<void> {
+  memoryDeletedCodes = codes;
+  await setCloudItem("deleted_coupons", Array.from(codes), updatedAt);
 }
 
 // Normaliza campos do cupom para garantir total interoperabilidade
@@ -150,60 +123,75 @@ export function normalizeCoupon(c: any): Coupon {
   };
 }
 
-// Carrega todos os cupons (Supabase + Disco/Memória + Defaults ignorando deletados)
-export async function getServerCoupons(): Promise<Coupon[]> {
-  const deletedCodes = loadDeletedCodes();
+// Carrega todos os cupons com metadados (Netlify Blobs + Supabase + Defaults ignorando deletados)
+export async function getServerCouponsMeta(): Promise<{
+  coupons: Coupon[];
+  deleted_codes: string[];
+  updated_at: number;
+  is_customized: boolean;
+}> {
+  const deletedCodes = await loadDeletedCodes();
 
-  // 1. Se já temos arquivo salvo em disco explicitamente, usamos a lista atual (mesmo que vazia [])
-  if (fs.existsSync(CACHE_FILE_PATH)) {
-    const list = loadFromDisk();
-    const activeList = list
-      .filter((c) => !deletedCodes.has(c.code.trim().toUpperCase()))
-      .map(normalizeCoupon);
-    memoryCoupons = activeList;
-    return activeList;
-  }
+  // 1. Tenta carregar do Netlify Blobs
+  const cloud = await getCloudItem<Coupon[]>("coupons", DEFAULT_COUPONS);
+  const rawList = Array.isArray(cloud.data) ? cloud.data : DEFAULT_COUPONS;
 
-  // 2. Tenta carregar do Supabase se disponível
-  try {
-    const supabase = createClient();
-    if (supabase) {
-      const { data: dbCoupons, error } = await supabase.from("coupons").select("*");
-      if (!error && dbCoupons && dbCoupons.length > 0) {
-        const activeList = dbCoupons
-          .filter((dbc) => !deletedCodes.has(dbc.code?.trim().toUpperCase()))
-          .map(normalizeCoupon);
-        memoryCoupons = activeList;
-        saveToDisk(activeList);
-        return activeList;
-      }
-    }
-  } catch (err) {}
-
-  // 3. Fallback inicial nos cupons padrão ignorando os que foram deletados
-  const initial = DEFAULT_COUPONS
-    .filter((dc) => !deletedCodes.has(dc.code.trim().toUpperCase()))
+  const activeList = rawList
+    .filter((c) => !deletedCodes.has(c.code.trim().toUpperCase()))
     .map(normalizeCoupon);
 
-  memoryCoupons = initial;
-  saveToDisk(initial);
-  return initial;
+  memoryCoupons = activeList;
+
+  // 2. Se não houver cupons customizados, tenta Supabase se configurado
+  if (!cloud.is_customized) {
+    try {
+      const supabase = createClient();
+      if (supabase) {
+        const { data: dbCoupons, error } = await supabase.from("coupons").select("*");
+        if (!error && dbCoupons && dbCoupons.length > 0) {
+          const dbList = dbCoupons
+            .filter((dbc) => !deletedCodes.has(dbc.code?.trim().toUpperCase()))
+            .map(normalizeCoupon);
+          memoryCoupons = dbList;
+          await setCloudItem("coupons", dbList, Date.now());
+          return {
+            coupons: dbList,
+            deleted_codes: Array.from(deletedCodes),
+            updated_at: Date.now(),
+            is_customized: true,
+          };
+        }
+      }
+    } catch (err) {}
+  }
+
+  return {
+    coupons: activeList,
+    deleted_codes: Array.from(deletedCodes),
+    updated_at: cloud.updated_at || 0,
+    is_customized: cloud.is_customized,
+  };
 }
 
-// Salva e atualiza cupons no servidor
+// Carrega todos os cupons (compatibilidade)
+export async function getServerCoupons(): Promise<Coupon[]> {
+  const meta = await getServerCouponsMeta();
+  return meta.coupons;
+}
+
+// Salva e atualiza cupons no servidor com sincronização persistente na nuvem
 export async function saveServerCoupons(
   coupons: Coupon[],
-  explicitDeletedCodes?: string[]
-): Promise<Coupon[]> {
+  explicitDeletedCodes?: string[],
+  updatedAt?: number
+): Promise<{
+  coupons: Coupon[];
+  deleted_codes: string[];
+  updated_at: number;
+}> {
+  const ts = updatedAt && updatedAt > 0 ? updatedAt : Date.now();
   const normalized = coupons.map(normalizeCoupon);
-  const previousMemory = memoryCoupons;
-  memoryCoupons = normalized;
-  saveToDisk(normalized);
-
-  const currentCodes = new Set(normalized.map((c) => c.code.trim().toUpperCase()));
-
-  // Se algum cupom padrão ou que estava salvo anteriormente foi removido da lista, registra como deletado
-  const deletedCodes = loadDeletedCodes();
+  const deletedCodes = await loadDeletedCodes();
 
   if (Array.isArray(explicitDeletedCodes)) {
     explicitDeletedCodes.forEach((code) => {
@@ -211,24 +199,33 @@ export async function saveServerCoupons(
     });
   }
 
+  const currentCodes = new Set(normalized.map((c) => c.code.trim().toUpperCase()));
+
+  // Cupons padrão que não estão na lista são marcados como deletados permanentemente
   DEFAULT_COUPONS.forEach((dc) => {
     const cCode = dc.code.trim().toUpperCase();
     if (!currentCodes.has(cCode)) {
       deletedCodes.add(cCode);
     }
   });
-  previousMemory.forEach((pm) => {
+
+  memoryCoupons.forEach((pm) => {
     const pCode = pm.code.trim().toUpperCase();
     if (!currentCodes.has(pCode)) {
       deletedCodes.add(pCode);
     }
   });
-  saveDeletedCodes(deletedCodes);
 
+  await saveDeletedCodes(deletedCodes, ts);
+
+  const filtered = normalized.filter((c) => !deletedCodes.has(c.code.trim().toUpperCase()));
+  memoryCoupons = filtered;
+  await setCloudItem("coupons", filtered, ts);
+
+  // Espelha no Supabase se disponível
   try {
     const supabase = createClient();
     if (supabase) {
-      // 1. Remove do Supabase cupons que não constam mais na lista atual
       const { data: dbAll } = await supabase.from("coupons").select("id, code");
       if (dbAll && dbAll.length > 0) {
         const toDeleteIds = dbAll
@@ -240,13 +237,13 @@ export async function saveServerCoupons(
         }
       }
 
-      // 2. Upsert compatível com os check constraints do banco Supabase
-      if (normalized.length > 0) {
-        const rows = normalized.map((c) => ({
+      if (filtered.length > 0) {
+        const rows = filtered.map((c) => ({
           id: c.id,
           code: c.code,
           name: c.name,
-          discount_type: c.discount_type === "percentage" || c.discount_type === "percent" ? "percent" : "fixed",
+          discount_type:
+            c.discount_type === "percentage" || c.discount_type === "percent" ? "percent" : "fixed",
           discount_value: c.discount_value,
           scope: c.scope === "product" ? "products" : c.scope,
           target_ids: c.target_ids || [],
@@ -271,32 +268,47 @@ export async function saveServerCoupons(
     console.warn("Aviso ao salvar cupons no Supabase:", err);
   }
 
-  return normalized;
+  return {
+    coupons: filtered,
+    deleted_codes: Array.from(deletedCodes),
+    updated_at: ts,
+  };
 }
 
-// Exclusão definitiva de um cupom
-export async function deleteServerCoupon(idOrCode: string): Promise<boolean> {
+// Exclusão definitiva de um cupom com remoção na nuvem
+export async function deleteServerCoupon(
+  idOrCode: string
+): Promise<{
+  success: boolean;
+  coupons: Coupon[];
+  deleted_codes: string[];
+  updated_at: number;
+}> {
   const clean = String(idOrCode || "").trim().toUpperCase();
-  if (!clean) return false;
+  if (!clean) {
+    const meta = await getServerCouponsMeta();
+    return { success: false, coupons: meta.coupons, deleted_codes: meta.deleted_codes, updated_at: meta.updated_at };
+  }
 
-  const deletedCodes = loadDeletedCodes();
-
-  // Encontra código se foi passado id
+  const deletedCodes = await loadDeletedCodes();
   const target = memoryCoupons.find(
     (c) => c.id === idOrCode || c.code.toUpperCase() === clean
   );
   const codeToDelete = target ? target.code.toUpperCase() : clean;
 
-  deletedCodes.add(codeToDelete);
-  saveDeletedCodes(deletedCodes);
+  if (codeToDelete) {
+    deletedCodes.add(codeToDelete);
+  }
 
-  // Remove de memória e disco
+  const ts = Date.now();
+  await saveDeletedCodes(deletedCodes, ts);
+
   memoryCoupons = memoryCoupons.filter(
     (c) => c.id !== idOrCode && c.code.toUpperCase() !== codeToDelete
   );
-  saveToDisk(memoryCoupons);
 
-  // Deleta do Supabase se conectado
+  await setCloudItem("coupons", memoryCoupons, ts);
+
   try {
     const supabase = createClient();
     if (supabase) {
@@ -309,7 +321,12 @@ export async function deleteServerCoupon(idOrCode: string): Promise<boolean> {
     console.warn("Aviso ao excluir cupom no Supabase:", err);
   }
 
-  return true;
+  return {
+    success: true,
+    coupons: memoryCoupons,
+    deleted_codes: Array.from(deletedCodes),
+    updated_at: ts,
+  };
 }
 
 export interface ValidationItem {

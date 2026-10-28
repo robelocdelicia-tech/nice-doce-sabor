@@ -1,6 +1,3 @@
-import os from "os";
-import fs from "fs";
-import path from "path";
 import { Product, Store, Category, PromoBanner } from "@/types";
 import {
   DEFAULT_PRODUCTS,
@@ -9,102 +6,61 @@ import {
   DEFAULT_PROMO_BANNERS,
 } from "@/lib/constants";
 import { createClient } from "@/lib/supabase/client";
-
-// Diretórios de persistência
-const PUBLIC_DATA_DIR = path.join(process.cwd(), "public", "data");
-const TMP_DATA_DIR = path.join(os.tmpdir(), "nice_data");
-
-// Memória em runtime
-let memoryProducts: Product[] | null = null;
-let memoryStore: Store | null = null;
-let memoryCategories: Category[] | null = null;
-let memoryBanners: PromoBanner[] | null = null;
-
-function ensureDir(dir: string) {
-  try {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-  } catch (err) {}
-}
-
-function readJSON<T>(filename: string): T | null {
-  // 1. Tenta ler do diretório public/data
-  try {
-    const pubPath = path.join(PUBLIC_DATA_DIR, filename);
-    if (fs.existsSync(pubPath)) {
-      const content = fs.readFileSync(pubPath, "utf-8");
-      return JSON.parse(content);
-    }
-  } catch (err) {}
-
-  // 2. Tenta ler do os.tmpdir
-  try {
-    const tmpPath = path.join(TMP_DATA_DIR, filename);
-    if (fs.existsSync(tmpPath)) {
-      const content = fs.readFileSync(tmpPath, "utf-8");
-      return JSON.parse(content);
-    }
-  } catch (err) {}
-
-  return null;
-}
-
-function writeJSON<T>(filename: string, data: T): void {
-  // Escreve em public/data se possível
-  try {
-    ensureDir(PUBLIC_DATA_DIR);
-    const pubPath = path.join(PUBLIC_DATA_DIR, filename);
-    fs.writeFileSync(pubPath, JSON.stringify(data, null, 2), "utf-8");
-  } catch (err) {}
-
-  // Espelha em os.tmpdir
-  try {
-    ensureDir(TMP_DATA_DIR);
-    const tmpPath = path.join(TMP_DATA_DIR, filename);
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
-  } catch (err) {}
-}
+import { getCloudItem, setCloudItem } from "@/lib/cloudStorage";
 
 // ==========================================
 // 1. PRODUTOS (FOTOS, DESCRIÇÕES, PREÇOS, SABORES)
 // ==========================================
-export async function getServerProducts(): Promise<Product[]> {
-  if (memoryProducts && memoryProducts.length > 0) {
-    return memoryProducts;
+export async function getServerProducts(): Promise<{
+  products: Product[];
+  updated_at: number;
+  is_customized: boolean;
+}> {
+  // 1. Lê do armazenamento em nuvem (Netlify Blobs)
+  const cloud = await getCloudItem<Product[]>("products", DEFAULT_PRODUCTS);
+  if (cloud.is_customized && Array.isArray(cloud.data) && cloud.data.length > 0) {
+    return {
+      products: cloud.data,
+      updated_at: cloud.updated_at,
+      is_customized: true,
+    };
   }
 
-  const fromDisk = readJSON<Product[]>("products.json");
-  if (fromDisk && Array.isArray(fromDisk) && fromDisk.length > 0) {
-    memoryProducts = fromDisk;
-    return fromDisk;
-  }
-
+  // 2. Se não houver dados customizados na nuvem, tenta Supabase se configurado
   try {
     const supabase = createClient();
     if (supabase) {
       const { data: dbProds, error } = await supabase.from("products").select("*");
       if (!error && dbProds && dbProds.length > 0) {
-        memoryProducts = dbProds;
-        writeJSON("products.json", dbProds);
-        return dbProds;
+        await setCloudItem("products", dbProds, Date.now());
+        return {
+          products: dbProds,
+          updated_at: Date.now(),
+          is_customized: true,
+        };
       }
     }
   } catch (err) {}
 
-  memoryProducts = DEFAULT_PRODUCTS;
-  writeJSON("products.json", DEFAULT_PRODUCTS);
-  return DEFAULT_PRODUCTS;
+  return {
+    products: cloud.data || DEFAULT_PRODUCTS,
+    updated_at: cloud.updated_at || 0,
+    is_customized: cloud.is_customized,
+  };
 }
 
-export async function saveServerProducts(products: Product[]): Promise<Product[]> {
+export async function saveServerProducts(
+  products: Product[],
+  updatedAt?: number
+): Promise<{ products: Product[]; updated_at: number }> {
   if (!Array.isArray(products) || products.length === 0) {
-    return memoryProducts || DEFAULT_PRODUCTS;
+    const current = await getServerProducts();
+    return { products: current.products, updated_at: current.updated_at };
   }
 
-  memoryProducts = products;
-  writeJSON("products.json", products);
+  const res = await setCloudItem("products", products, updatedAt);
 
+  // Espelha no Supabase se configurado
   try {
     const supabase = createClient();
     if (supabase) {
@@ -112,47 +68,62 @@ export async function saveServerProducts(products: Product[]): Promise<Product[]
     }
   } catch (err) {}
 
-  return products;
+  return { products, updated_at: res.updated_at };
 }
 
 // ==========================================
 // 2. CONFIGURAÇÕES DA LOJA (HORÁRIOS, NOME, PIX)
 // ==========================================
-export async function getServerStore(): Promise<Store> {
-  if (memoryStore) {
-    return memoryStore;
-  }
-
-  const fromDisk = readJSON<Store>("store.json");
-  if (fromDisk && typeof fromDisk === "object" && fromDisk.name) {
-    memoryStore = fromDisk;
-    return fromDisk;
+export async function getServerStore(): Promise<{
+  store: Store;
+  updated_at: number;
+  is_customized: boolean;
+}> {
+  const cloud = await getCloudItem<Store>("store", DEFAULT_STORE);
+  if (cloud.is_customized && cloud.data && cloud.data.name) {
+    return {
+      store: cloud.data,
+      updated_at: cloud.updated_at,
+      is_customized: true,
+    };
   }
 
   try {
     const supabase = createClient();
     if (supabase) {
-      const { data: dbStore, error } = await supabase.from("stores").select("*").limit(1).single();
-      if (!error && dbStore) {
-        memoryStore = dbStore;
-        writeJSON("store.json", dbStore);
-        return dbStore;
+      const { data: dbStore, error } = await supabase
+        .from("stores")
+        .select("*")
+        .limit(1)
+        .single();
+      if (!error && dbStore && dbStore.name) {
+        await setCloudItem("store", dbStore, Date.now());
+        return {
+          store: dbStore,
+          updated_at: Date.now(),
+          is_customized: true,
+        };
       }
     }
   } catch (err) {}
 
-  memoryStore = DEFAULT_STORE;
-  writeJSON("store.json", DEFAULT_STORE);
-  return DEFAULT_STORE;
+  return {
+    store: cloud.data || DEFAULT_STORE,
+    updated_at: cloud.updated_at || 0,
+    is_customized: cloud.is_customized,
+  };
 }
 
-export async function saveServerStore(store: Store): Promise<Store> {
+export async function saveServerStore(
+  store: Store,
+  updatedAt?: number
+): Promise<{ store: Store; updated_at: number }> {
   if (!store || !store.name) {
-    return memoryStore || DEFAULT_STORE;
+    const current = await getServerStore();
+    return { store: current.store, updated_at: current.updated_at };
   }
 
-  memoryStore = store;
-  writeJSON("store.json", store);
+  const res = await setCloudItem("store", store, updatedAt);
 
   try {
     const supabase = createClient();
@@ -161,63 +132,63 @@ export async function saveServerStore(store: Store): Promise<Store> {
     }
   } catch (err) {}
 
-  return store;
+  return { store, updated_at: res.updated_at };
 }
 
 // ==========================================
 // 3. CATEGORIAS DO CARDÁPIO
 // ==========================================
-export async function getServerCategories(): Promise<Category[]> {
-  if (memoryCategories && memoryCategories.length > 0) {
-    return memoryCategories;
-  }
-
-  const fromDisk = readJSON<Category[]>("categories.json");
-  if (fromDisk && Array.isArray(fromDisk) && fromDisk.length > 0) {
-    memoryCategories = fromDisk;
-    return fromDisk;
-  }
-
-  memoryCategories = DEFAULT_CATEGORIES;
-  writeJSON("categories.json", DEFAULT_CATEGORIES);
-  return DEFAULT_CATEGORIES;
+export async function getServerCategories(): Promise<{
+  categories: Category[];
+  updated_at: number;
+  is_customized: boolean;
+}> {
+  const cloud = await getCloudItem<Category[]>("categories", DEFAULT_CATEGORIES);
+  return {
+    categories: cloud.data || DEFAULT_CATEGORIES,
+    updated_at: cloud.updated_at || 0,
+    is_customized: cloud.is_customized,
+  };
 }
 
-export async function saveServerCategories(categories: Category[]): Promise<Category[]> {
+export async function saveServerCategories(
+  categories: Category[],
+  updatedAt?: number
+): Promise<{ categories: Category[]; updated_at: number }> {
   if (!Array.isArray(categories)) {
-    return memoryCategories || DEFAULT_CATEGORIES;
+    const current = await getServerCategories();
+    return { categories: current.categories, updated_at: current.updated_at };
   }
 
-  memoryCategories = categories;
-  writeJSON("categories.json", categories);
-  return categories;
+  const res = await setCloudItem("categories", categories, updatedAt);
+  return { categories, updated_at: res.updated_at };
 }
 
 // ==========================================
 // 4. BANNERS PROMOCIONAIS
 // ==========================================
-export async function getServerBanners(): Promise<PromoBanner[]> {
-  if (memoryBanners && memoryBanners.length > 0) {
-    return memoryBanners;
-  }
-
-  const fromDisk = readJSON<PromoBanner[]>("banners.json");
-  if (fromDisk && Array.isArray(fromDisk)) {
-    memoryBanners = fromDisk;
-    return fromDisk;
-  }
-
-  memoryBanners = DEFAULT_PROMO_BANNERS;
-  writeJSON("banners.json", DEFAULT_PROMO_BANNERS);
-  return DEFAULT_PROMO_BANNERS;
+export async function getServerBanners(): Promise<{
+  banners: PromoBanner[];
+  updated_at: number;
+  is_customized: boolean;
+}> {
+  const cloud = await getCloudItem<PromoBanner[]>("banners", DEFAULT_PROMO_BANNERS);
+  return {
+    banners: cloud.data || DEFAULT_PROMO_BANNERS,
+    updated_at: cloud.updated_at || 0,
+    is_customized: cloud.is_customized,
+  };
 }
 
-export async function saveServerBanners(banners: PromoBanner[]): Promise<PromoBanner[]> {
+export async function saveServerBanners(
+  banners: PromoBanner[],
+  updatedAt?: number
+): Promise<{ banners: PromoBanner[]; updated_at: number }> {
   if (!Array.isArray(banners)) {
-    return memoryBanners || DEFAULT_PROMO_BANNERS;
+    const current = await getServerBanners();
+    return { banners: current.banners, updated_at: current.updated_at };
   }
 
-  memoryBanners = banners;
-  writeJSON("banners.json", banners);
-  return banners;
+  const res = await setCloudItem("banners", banners, updatedAt);
+  return { banners, updated_at: res.updated_at };
 }

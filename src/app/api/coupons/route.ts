@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  getServerCoupons,
+  getServerCouponsMeta,
   saveServerCoupons,
   deleteServerCoupon,
   normalizeCoupon,
@@ -9,10 +9,12 @@ import { Coupon } from "@/types";
 
 export async function GET() {
   try {
-    const coupons = await getServerCoupons();
+    const meta = await getServerCouponsMeta();
     return NextResponse.json({
       success: true,
-      coupons,
+      coupons: meta.coupons,
+      deleted_codes: meta.deleted_codes,
+      updated_at: meta.updated_at,
     });
   } catch (error) {
     console.error("Erro ao listar cupons:", error);
@@ -27,23 +29,24 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     let updatedCoupons: Coupon[] = [];
+    const updatedAt = typeof body.updated_at === "number" ? body.updated_at : Date.now();
 
     if (Array.isArray(body.coupons)) {
       updatedCoupons = body.coupons;
     } else if (body.coupon && typeof body.coupon === "object") {
-      const current = await getServerCoupons();
+      const meta = await getServerCouponsMeta();
       const newCoupon = normalizeCoupon(body.coupon);
-      const exists = current.some(
+      const exists = meta.coupons.some(
         (c) => c.code.toUpperCase() === newCoupon.code.toUpperCase() || c.id === newCoupon.id
       );
       if (exists) {
-        updatedCoupons = current.map((c) =>
+        updatedCoupons = meta.coupons.map((c) =>
           c.code.toUpperCase() === newCoupon.code.toUpperCase() || c.id === newCoupon.id
             ? newCoupon
             : c
         );
       } else {
-        updatedCoupons = [newCoupon, ...current];
+        updatedCoupons = [newCoupon, ...meta.coupons];
       }
     } else {
       return NextResponse.json(
@@ -53,10 +56,12 @@ export async function POST(request: NextRequest) {
     }
 
     const explicitDeleted = Array.isArray(body.deleted_codes) ? body.deleted_codes : undefined;
-    const saved = await saveServerCoupons(updatedCoupons, explicitDeleted);
+    const saved = await saveServerCoupons(updatedCoupons, explicitDeleted, updatedAt);
     return NextResponse.json({
       success: true,
-      coupons: saved,
+      coupons: saved.coupons,
+      deleted_codes: saved.deleted_codes,
+      updated_at: saved.updated_at,
     });
   } catch (error) {
     console.error("Erro ao salvar cupons:", error);
@@ -88,12 +93,13 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await deleteServerCoupon(idOrCode);
-    const updated = await getServerCoupons();
+    const result = await deleteServerCoupon(idOrCode);
 
     return NextResponse.json({
       success: true,
-      coupons: updated,
+      coupons: result.coupons,
+      deleted_codes: result.deleted_codes,
+      updated_at: result.updated_at,
     });
   } catch (error) {
     console.error("Erro ao excluir cupom:", error);

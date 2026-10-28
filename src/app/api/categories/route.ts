@@ -3,10 +3,12 @@ import { getServerCategories, saveServerCategories } from "@/lib/serverData";
 
 export async function GET() {
   try {
-    const categories = await getServerCategories();
+    const res = await getServerCategories();
     return NextResponse.json({
       success: true,
-      categories,
+      categories: res.categories,
+      updated_at: res.updated_at,
+      is_customized: res.is_customized,
     });
   } catch (error) {
     console.error("Erro ao carregar categorias:", error);
@@ -21,6 +23,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const categories = body.categories || body;
+    const updatedAt = typeof body.updated_at === "number" ? body.updated_at : Date.now();
 
     if (!Array.isArray(categories)) {
       return NextResponse.json(
@@ -29,10 +32,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const saved = await saveServerCategories(categories);
+    const saved = await saveServerCategories(categories, updatedAt);
     return NextResponse.json({
       success: true,
-      categories: saved,
+      categories: saved.categories,
+      updated_at: saved.updated_at,
     });
   } catch (error) {
     console.error("Erro ao salvar categorias:", error);

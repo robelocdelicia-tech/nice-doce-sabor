@@ -23,7 +23,7 @@ import { formatCurrency } from "@/lib/utils";
 import { calculateBestSellers } from "@/lib/bestSellers";
 import { Header } from "@/components/Header";
 import { TestimonialsStories } from "@/components/TestimonialsStories";
-import { getStoredCoupons, filterDeletedCoupons } from "@/lib/couponStorage";
+import { getStoredCoupons, filterDeletedCoupons, markCouponAsDeleted } from "@/lib/couponStorage";
 import {
   getInitialProducts,
   fetchProductsFromServer,
@@ -33,6 +33,7 @@ import {
   fetchCategoriesFromServer,
   getInitialBanners,
   fetchBannersFromServer,
+  syncCouponsWithCloud,
 } from "@/lib/dataSync";
 import { BannerCarousel } from "@/components/BannerCarousel";
 import { CategoryNav } from "@/components/CategoryNav";
@@ -147,16 +148,12 @@ export default function HomePage() {
       if (bans && bans.length > 0) setBanners(bans);
     });
 
-    fetch("/api/coupons")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && Array.isArray(data.coupons)) {
-          const safeList = filterDeletedCoupons(data.coupons);
-          setCoupons(safeList);
-          localStorage.setItem("nice_custom_coupons", JSON.stringify(safeList));
-        }
-      })
-      .catch((err) => console.warn("Aviso ao carregar cupons:", err));
+    // Sincroniza cupons e lista negra de excluídos com a nuvem
+    syncCouponsWithCloud().then((res) => {
+      if (res && Array.isArray(res.coupons)) {
+        setCoupons(res.coupons);
+      }
+    });
 
     const handleProductsUpdate = (e: any) => {
       if (e.detail && Array.isArray(e.detail)) {
@@ -170,16 +167,24 @@ export default function HomePage() {
       }
     };
 
+    const handleCouponsUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setCoupons(e.detail);
+      }
+    };
+
     window.addEventListener("storage", loadCustomData);
     window.addEventListener("stock_update", loadCustomData);
     window.addEventListener("products_update", handleProductsUpdate);
     window.addEventListener("store_update", handleStoreUpdate);
+    window.addEventListener("coupons_update", handleCouponsUpdate);
 
     return () => {
       window.removeEventListener("storage", loadCustomData);
       window.removeEventListener("stock_update", loadCustomData);
       window.removeEventListener("products_update", handleProductsUpdate);
       window.removeEventListener("store_update", handleStoreUpdate);
+      window.removeEventListener("coupons_update", handleCouponsUpdate);
     };
   }, []);
 
